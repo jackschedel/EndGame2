@@ -1,44 +1,48 @@
 use std::io::{self, BufRead};
 use std::sync::atomic::{AtomicBool, Ordering, AtomicPtr};
 use std::ptr;
+use std::sync::{Arc, Mutex};
+use std::thread;
 use std::str::SplitWhitespace;
 
 
-static UCI_ENABLED: AtomicBool = AtomicBool::new(false);
-static DEBUG_ENABLED: AtomicBool = AtomicBool::new(false);
-static REGISTRATION_NAME: AtomicPtr<String> = AtomicPtr::new(ptr::null_mut());
-static REGISTRATION_CODE: AtomicPtr<String> = AtomicPtr::new(ptr::null_mut());
-
+struct SharedFlags {
+    uci_enabled: bool,
+    debug_enabled: bool,
+    registration_name: String,
+    registration_code: String
+}
 
 
 fn main() {
-    REGISTRATION_NAME.store(Box::into_raw(Box::new("".to_string())), Ordering::Relaxed);
-    REGISTRATION_CODE.store(Box::into_raw(Box::new("".to_string())), Ordering::Relaxed);
 
+    let shared_flags =  Arc::new(Mutex::new(SharedFlags {
+        uci_enabled: false,
+        debug_enabled: false,
+        registration_name: String::from("EndGame2"),
+        registration_code: String::from("6399"),
+    }));
+
+    let shared_flags_clone = Arc::clone(&shared_flags);
     // Create a separate thread to read CLI input to allow interrupts
-    std::thread::spawn(|| {
-        handle_cli_input();
+    std::thread::spawn(move || {
+        handle_cli_input(shared_flags_clone);
     });
 
     // Main program logic
     loop {
 
-
         // print value of DEBUG_ENABLED
-        println!("debug enabled: {}", DEBUG_ENABLED.load(Ordering::Relaxed));
+        println!("debug enabled: {}", shared_flags.lock().unwrap().debug_enabled);
 
         // print value of UCI_ENABLED
-        println!("uci enabled: {}", UCI_ENABLED.load(Ordering::Relaxed));
+        println!("uci enabled: {}", shared_flags.lock().unwrap().uci_enabled);
 
         // print value of REGISTRATION_NAME
-        let registration_name_ptr = REGISTRATION_NAME.load(Ordering::SeqCst);
-        let registration_name_string = unsafe { Box::from_raw(registration_name_ptr) };
-        println!("registration name: {}", *registration_name_string);
+        println!("registration name: {}", shared_flags.lock().unwrap().registration_name);
 
         // print value of REGISTRATION_CODE
-        let registration_code_ptr = REGISTRATION_CODE.load(Ordering::SeqCst);
-        let registration_code_string = unsafe { Box::from_raw(registration_code_ptr) };
-        println!("registration code: {}", *registration_code_string);
+        println!("registration code: {}", shared_flags.lock().unwrap().registration_code);
 
 
         // Sleep for a while to simulate other work
@@ -46,64 +50,62 @@ fn main() {
     }
 }
 
-fn handle_cli_input() {
+fn handle_cli_input(shared_flags: Arc<Mutex<SharedFlags>>) {
     for line in io::stdin().lock().lines() {
         if let Ok(input) = line {
-            handle_command(input);
+            handle_command(input, &shared_flags);
         }
     }
 }
 
-fn handle_command(input: String) {
+fn handle_command(input: String, shared_flags: &Arc<Mutex<SharedFlags>>) {
     let mut command = input.trim().split_whitespace();
     if let Some(word) = command.next() {
         match word {
-            "uci" => UCI_ENABLED.store(true, Ordering::Relaxed),
-            "debug" => debug_command(&mut command),
+            "uci" => shared_flags.lock().unwrap().uci_enabled = true,
+            "debug" => debug_command(&mut command, shared_flags),
             "isready" => isready_command(),
-            "setoption" => setoption_command(&mut command),
-            "register" => register_command(&mut command),
+            "setoption" => setoption_command(&mut command, shared_flags),
+            "register" => register_command(&mut command, shared_flags),
             "quit" => println!("test"),
             _ => println!("Unknown command!")
         }
     }
 }
 
-fn register_command(command: &mut SplitWhitespace) {
+fn register_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlags>>) {
     let token1 = command.next();
 
     if token1 == Some("later") {
         return;
     }
 
-    parse_register_tokenset(command, token1);
+    parse_register_tokenset(command, token1, shared_flags);
 
     let token2 = command.next();
 
-    parse_register_tokenset(command, token2);
+    parse_register_tokenset(command, token2, shared_flags);
 
 }
 
-fn parse_register_tokenset(command: &mut SplitWhitespace, token1: Option<&str>) {
+fn parse_register_tokenset(command: &mut SplitWhitespace, token1: Option<&str>, shared_flags: &Arc<Mutex<SharedFlags>>) {
     match token1 {
         Some("name") => {
             if let Some(next_token) = command.next() {
-                let token_box = Box::into_raw(Box::new(next_token.to_string()));
-                REGISTRATION_NAME.store(token_box, Ordering::Relaxed);
+                shared_flags.lock().unwrap().registration_name = next_token.parse().unwrap();
             }
         },
         Some("code") => {
             if let Some(next_token) = command.next() {
-                let token_box = Box::into_raw(Box::new(next_token.to_string()));
-                REGISTRATION_CODE.store(token_box, Ordering::Relaxed);
+                shared_flags.lock().unwrap().registration_code = next_token.parse().unwrap();
             }
         },
-        Some("") => {},
+        None => {},
         _ => println!("Register command improperly formatted!")
     }
 }
 
-fn setoption_command(command: &mut SplitWhitespace) {
+fn setoption_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlags>>) {
     match command.next() {
         //Some("") => {},
         _ => println!("Invalid option!")
@@ -118,10 +120,10 @@ fn isready_command() {
     println!("readyok");
 }
 
-fn debug_command(command: &mut SplitWhitespace) {
+fn debug_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlags>>) {
     match command.next() {
-        Some("on") => DEBUG_ENABLED.store(true, Ordering::Relaxed),
-        Some("off") => DEBUG_ENABLED.store(false, Ordering::Relaxed),
+        Some("on") => shared_flags.lock().unwrap().debug_enabled = true,
+        Some("off") => shared_flags.lock().unwrap().debug_enabled = false,
         _ => println!("Debug command must select on or off!")
     }
 }
