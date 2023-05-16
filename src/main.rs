@@ -3,13 +3,13 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::str::SplitWhitespace;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 enum Color {
     Black,
     White,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 enum Piece {
     Pawn(Color),
     Knight(Color),
@@ -43,6 +43,13 @@ impl Piece {
             _ => false,
         }
     }
+}
+
+#[derive(PartialEq)]
+struct HalfMove {
+    from: u8,
+    to: u8,
+    promote_to: Option<Piece>
 }
 
 struct ColorCastlingRights {
@@ -220,14 +227,27 @@ fn position_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Shar
 
     while move_token != None {
         
+        let parsed_move = string_to_halfmove(shared_flags, move_token.unwrap());
 
+        if parsed_move == None {
+            println!("Error - unparsable move - {}", move_token.unwrap());
+            break;
+        } else {
+            execute_halfmove(shared_flags, parsed_move.unwrap());
+        }
 
         move_token = command.next();
     }
 }
 
-fn string_to_move(shared_flags: &Arc<Mutex<SharedFlags>>, move_string: &str) -> Move {
+fn execute_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, to_exec: HalfMove) {
 
+}
+
+fn string_to_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, move_string: &str) -> Option<HalfMove> {
+
+
+    return None;
 }
 
 fn set_flags_from_fen(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlags>>) {
