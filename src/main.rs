@@ -207,11 +207,27 @@ fn position_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Shar
         _ => println!("Position command improperly formatted!")
     }
 
-    parse_register_tokenset(command, token1, shared_flags);
-
     let token2 = command.next();
 
-    parse_register_tokenset(command, token2, shared_flags);
+    if token2 == None {
+        return;
+    } else if token2.unwrap() != "moves" {
+        println!("Error - expected moves token!");
+        return;
+    }
+
+    let mut move_token = command.next();
+
+    while move_token != None {
+        
+
+
+        move_token = command.next();
+    }
+}
+
+fn string_to_move(shared_flags: &Arc<Mutex<SharedFlags>>, move_string: &str) -> Move {
+
 }
 
 fn set_flags_from_fen(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlags>>) {
