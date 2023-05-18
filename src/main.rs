@@ -19,6 +19,17 @@ enum Piece {
     King(Color),
 }
 
+#[derive(PartialEq)]
+enum HalfmoveFlag {
+    KnightPromotion,
+    BishopPromotion,
+    RookPromotion,
+    QueenPromotion,
+    Castle,
+    EnPassant,
+    DoublePawnMove,
+}
+
 impl Piece {
     fn is_white(&self) -> bool {
         match *self {
@@ -49,7 +60,7 @@ impl Piece {
 struct HalfMove {
     from: u8,
     to: u8,
-    promote_to: Option<Piece>
+    special_flags: Option<HalfmoveFlag>,
 }
 
 struct ColorCastlingRights {
@@ -245,7 +256,34 @@ fn execute_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, to_exec: HalfMove) {
 }
 
 fn string_to_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, move_string: &str) -> Option<HalfMove> {
+    let mut is_pieceless_move = true;
 
+    let string_length = move_string.len();
+
+    let mut char_index = 0;
+
+    let mut chars = move_string.chars();
+
+    match move_string.chars().next() {
+        Some('N') | Some('B') | Some('R') | Some('Q') | Some('K') => {
+            is_pieceless_move = false;
+            chars.next();
+        },
+        None => return None,
+        _ => {}
+    }
+
+
+
+    let coord1_str: String = chars.take(2).collect();
+
+    let coord1 = coord_to_int(&coord1_str);
+
+    while char_index <= string_length {
+
+
+
+    }
 
     return None;
 }
