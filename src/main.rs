@@ -2,6 +2,7 @@ use std::io::{self, BufRead};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::str::SplitWhitespace;
+use crate::HalfmoveFlag::{BishopPromotion, Castle, DoublePawnMove, EnPassant, KnightPromotion, QueenPromotion, RookPromotion};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum Color {
@@ -54,13 +55,37 @@ impl Piece {
             _ => false,
         }
     }
+
+    fn is_pawn(&self) -> bool {
+        matches!(self, Piece::Pawn(_))
+    }
+
+    fn is_knight(&self) -> bool {
+        matches!(self, Piece::Knight(_))
+    }
+
+    fn is_bishop(&self) -> bool {
+        matches!(self, Piece::Bishop(_))
+    }
+
+    fn is_rook(&self) -> bool {
+        matches!(self, Piece::Rook(_))
+    }
+
+    fn is_queen(&self) -> bool {
+        matches!(self, Piece::Queen(_))
+    }
+
+    fn is_king(&self) -> bool {
+        matches!(self, Piece::King(_))
+    }
 }
 
 #[derive(PartialEq)]
 struct HalfMove {
     from: u8,
     to: u8,
-    special_flags: Option<HalfmoveFlag>,
+    flag: Option<HalfmoveFlag>,
 }
 
 struct ColorCastlingRights {
@@ -100,8 +125,9 @@ fn main() {
 
 
     let shared_flags =  Arc::new(Mutex::new(SharedFlags {
-        uci_enabled: false,
-        debug_enabled: false,
+        //TODO: set uci_enabled and debug_enabled to false for final release
+        uci_enabled: true,
+        debug_enabled: true,
         registration_name: String::from("EndGame2"),
         registration_code: String::from("6399"),
         is_ready: true,
@@ -230,7 +256,7 @@ fn position_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Shar
     if token2 == None {
         return;
     } else if token2.unwrap() != "moves" {
-        println!("Error - expected moves token!");
+        println!("Error - expected moves token, got {}!", token2.unwrap());
         return;
     }
 
@@ -258,34 +284,163 @@ fn execute_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, to_exec: HalfMove) {
 fn string_to_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, move_string: &str) -> Option<HalfMove> {
     let mut is_pieceless_move = true;
 
-    let string_length = move_string.len();
-
     let mut char_index = 0;
 
-    let mut chars = move_string.chars();
+    let mut is_capture = false;
 
-    match move_string.chars().next() {
+    match move_string.chars().nth(0) {
         Some('N') | Some('B') | Some('R') | Some('Q') | Some('K') => {
             is_pieceless_move = false;
-            chars.next();
+            char_index += 1;
         },
         None => return None,
         _ => {}
     }
 
-
-
-    let coord1_str: String = chars.take(2).collect();
-
+    let coord1_str: String = move_string.chars().skip(char_index).take(2).collect();
     let coord1 = coord_to_int(&coord1_str);
 
-    while char_index <= string_length {
+    char_index += 2;
+
+    let coord_separator: char = move_string.chars().nth(char_index).unwrap();
+
+    if coord_separator == '-'  {
+        char_index += 1;
+    } else if coord_separator == 'x'{
+        char_index += 1;
+        is_capture = true;
+    }
+
+    let coord2_str: String = move_string.chars().skip(char_index).take(2).collect();
+    let coord2 = coord_to_int(&coord2_str);
+
+    let mut flag: Option<HalfmoveFlag> = None;
+
+    let board = shared_flags.lock().unwrap().position.board;
+
+    if is_pieceless_move {
+        // pawn action or castling
+
+        if coord1 % 8 == coord2 % 8 {
+            // straight pawn move (i.e. not a capture)
+
+            if board[coord1 as usize] == None || !board[coord1 as usize].unwrap().is_pawn() {
+                println!("Error - no pawn at {}!", coord1_str);
+                return None;
+            }
+
+            match (coord2 / 8) - (coord1 / 8) {
+                1 => {},
+                2 => {
+                    flag = Option::from(DoublePawnMove);
+                },
+                _ => {
+                    println!("Error - invalid pawn move from {} to {}!", coord1_str, coord2_str);
+                    return None;
+                },
+            }
+        } else if is_capture {
+            // pawn captures
+
+            if board[coord1 as usize] == None || !board[coord1 as usize].unwrap().is_pawn() {
+                println!("Error - no pawn at {}!", coord1_str);
+                return None;
+            }
+
+            let file_diff = (coord1 % 8).abs_diff(coord2 % 8);
+
+            let rank_diff = (coord1 / 8).abs_diff(coord2 / 8);
+
+            if rank_diff > 1 || file_diff > 1{
+                println!("Error - invalid pawn capture!");
+                return None;
+            }
+
+            let en_passant_target = shared_flags.lock().unwrap().position.en_passant_target;
+
+            if Some(coord2) == en_passant_target {
+                flag = Option::from(EnPassant);
+            }
+
+            // note: technically no checks for backwards pawn captures
+            // these checks are just for debugging, will want to add check vs genned moves later
+
+        } else {
+            // castle
+
+            let from_pos=board[coord1 as usize];
+
+            let to_pos=board[coord2 as usize];
+
+            if from_pos == None || to_pos == None {
+                println!("Error - invalid castle or forgot to specify piece!");
+                return None;
+            }
+
+            let from_piece=from_pos.unwrap();
+
+            let to_piece=to_pos.unwrap();
 
 
+
+            let file_diff = (coord1 % 8).abs_diff(coord2 % 8);
+
+            let rank_diff = (coord1 / 8).abs_diff(coord2 / 8);
+
+            if !from_piece.is_king() || !to_piece.is_rook() || rank_diff != 0 || file_diff > 4{
+                println!("Error - invalid castle or forgot to specify piece!");
+                return None;
+            }
+
+            flag = Option::from(Castle);
+
+            // note: no checks for whether the player is allowed to castle
+            // these checks are just for debugging, will want to add check vs genned moves later
+
+        }
+
+        match move_string.chars().nth(char_index + 2) {
+            Some('n') | Some('b') | Some('r') | Some('q') => {
+                if board[coord1 as usize] == None || !board[coord1 as usize].unwrap().is_pawn() {
+                    println!("Error - promoting, expected pawn!");
+                    return None;
+                }
+                // note: no check for correct rank on promotion
+            },
+            None => {},
+            _ => {
+                println!("Error - unexpected promotion char: {:?}", move_string.chars().nth(char_index + 2));
+                return None;
+            }
+        }
+
+        match move_string.chars().nth(char_index + 2) {
+            Some('n') => {
+                flag = Option::from(KnightPromotion);
+            },
+            Some('b') => {
+                flag = Option::from(BishopPromotion);
+            },
+            Some('r') => {
+                flag = Option::from(RookPromotion);
+            },
+            Some('q') => {
+                flag = Option::from(QueenPromotion);
+            },
+            _ => {}
+        }
 
     }
 
-    return None;
+    // note: no checks for if there are pieces in between the to + from
+    // all checks should be tacked on after the fact
+    // don't need to worry about efficiency because this will never be called unless debugging
+
+    return Option::from(HalfMove {
+        from: coord1,
+        to: coord2,
+        flag
+    });
 }
 
 fn set_flags_from_fen(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlags>>) {
