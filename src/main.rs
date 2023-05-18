@@ -140,7 +140,7 @@ impl PieceSet {
         }
     }
 
-    fn move_index(&mut self, index: u8, color: Color) {
+    fn add_index_or_color_swap(&mut self, index: u8, color: Color) {
         self.all.insert(index);
 
         if color == Color::Black {
@@ -186,9 +186,8 @@ fn main() {
 
 
     let shared_flags =  Arc::new(Mutex::new(SharedFlags {
-        //TODO: set uci_enabled and debug_enabled to false for final release
-        uci_enabled: true,
-        debug_enabled: true,
+        uci_enabled: false,
+        debug_enabled: false,
         registration_name: String::from("EndGame2"),
         registration_code: String::from("6399"),
         is_ready: true,
@@ -226,14 +225,14 @@ fn main() {
         handle_cli_input(shared_flags_clone);
     });
 
-    /*
     // Main program logic
     let shared_flags_clone = Arc::clone(&shared_flags);
 
-    shared_flags_clone.lock().unwrap().debug_enabled = true;
-    set_board_from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR", &shared_flags_clone);
-    set_board_from_fen("r1b1k1nr/p2p1pNp/n2B4/1p1NP2P/6P1/3P1Q2/P1P1K3/q5b1", &shared_flags_clone);
-    */
+    handle_command("uci".to_string(), &shared_flags);
+
+    handle_command("debug on".to_string(), &shared_flags);
+
+    handle_command("position fen 8/8/4k3/1p2p2p/PPpn3P/2N4r/5K2/2R5 b - - 2 53 moves Nd4b3".to_string(), &shared_flags);
 
     /*
     thread::spawn(move ||  {
@@ -287,7 +286,7 @@ fn handle_command(input: String, shared_flags: &Arc<Mutex<SharedFlags>>) {
 
 fn parse_cli_command(shared_flags: &Arc<Mutex<SharedFlags>>, mut command: &mut SplitWhitespace, word: &str) {
     match word {
-        "uci" => shared_flags.lock().unwrap().uci_enabled = true,
+        "uci" => uci_command(shared_flags),
         "debug" => debug_command(&mut command, shared_flags),
         "isready" => isready_command(shared_flags),
         "setoption" => setoption_command(&mut command, shared_flags),
@@ -295,11 +294,23 @@ fn parse_cli_command(shared_flags: &Arc<Mutex<SharedFlags>>, mut command: &mut S
         "ucinewgame" => {},
         "position" => position_command(&mut command, shared_flags),
         "go" => go_command(&mut command, shared_flags),
-        "stop" => shared_flags.lock().unwrap().should_stop = true,
-        "ponderhit" => shared_flags.lock().unwrap().ponder_hit = true,
+        "stop" => stop_command(shared_flags),
+        "ponderhit" => ponderhit_command(shared_flags),
         "quit" => quit_command(shared_flags),
         _ => println!("Error - Unknown command!")
     }
+}
+
+fn ponderhit_command(shared_flags: &Arc<Mutex<SharedFlags>>) {
+    shared_flags.lock().unwrap().ponder_hit = true
+}
+
+fn stop_command(shared_flags: &Arc<Mutex<SharedFlags>>) {
+    shared_flags.lock().unwrap().should_stop = true
+}
+
+fn uci_command(shared_flags: &Arc<Mutex<SharedFlags>>) {
+    shared_flags.lock().unwrap().uci_enabled = true;
 }
 
 fn position_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlags>>) {
@@ -377,16 +388,25 @@ fn execute_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, to_exec: HalfMove) {
         }
 
         shared_flags.lock().unwrap().position.board[to_exec.to as usize] = Some(piece);
+        shared_flags.lock().unwrap().position.piece_set.add_index_or_color_swap(to_exec.to, color);
     } else {
         shared_flags.lock().unwrap().position.board[to_exec.to as usize] = None;
+        shared_flags.lock().unwrap().position.piece_set.remove_index(to_exec.to, color);
         if color == Color::White {
             if to_exec.to == 0 {
                 shared_flags.lock().unwrap().position.board[2] = Some(Piece::King(color));
+                shared_flags.lock().unwrap().position.piece_set.add_index(2, color);
+
                 shared_flags.lock().unwrap().position.board[3] = Some(Piece::Rook(color));
+                shared_flags.lock().unwrap().position.piece_set.add_index(3, color);
             } else {
                 // to_exec.to = 7
                 shared_flags.lock().unwrap().position.board[6] = Some(Piece::King(color));
+                shared_flags.lock().unwrap().position.piece_set.add_index(6, color);
+
                 shared_flags.lock().unwrap().position.board[5] = Some(Piece::Rook(color));
+                shared_flags.lock().unwrap().position.piece_set.add_index(5, color);
+
             }
 
             shared_flags.lock().unwrap().position.castling_rights.white.kingside = false;
@@ -394,11 +414,17 @@ fn execute_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, to_exec: HalfMove) {
         } else {
             if to_exec.to == 56 {
                 shared_flags.lock().unwrap().position.board[58] = Some(Piece::King(color));
+                shared_flags.lock().unwrap().position.piece_set.add_index(58, color);
+
                 shared_flags.lock().unwrap().position.board[59] = Some(Piece::Rook(color));
+                shared_flags.lock().unwrap().position.piece_set.add_index(59, color);
             } else {
                 // to_exec.to = 63
                 shared_flags.lock().unwrap().position.board[62] = Some(Piece::King(color));
+                shared_flags.lock().unwrap().position.piece_set.add_index(62, color);
+
                 shared_flags.lock().unwrap().position.board[61] = Some(Piece::Rook(color));
+                shared_flags.lock().unwrap().position.piece_set.add_index(61, color);
 
             }
 
@@ -408,11 +434,13 @@ fn execute_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, to_exec: HalfMove) {
     }
 
     shared_flags.lock().unwrap().position.board[to_exec.from as usize] = None;
+    shared_flags.lock().unwrap().position.piece_set.remove_index(to_exec.from, color);
 
     if to_exec.flag == Some(HalfmoveFlag::EnPassant) {
         let target = shared_flags.lock().unwrap().position.en_passant_target.unwrap();
 
         shared_flags.lock().unwrap().position.board[target as usize] = None;
+        shared_flags.lock().unwrap().position.piece_set.remove_index(target, color.opposite());
     }
 
     if to_exec.flag == Some(HalfmoveFlag::DoublePawnMove) {
@@ -713,8 +741,14 @@ fn set_board_from_fen(fen: &str, shared_flags: &Arc<Mutex<SharedFlags>>) {
 fn display_debug(shared_flags: &Arc<Mutex<SharedFlags>>) {
     if shared_flags.lock().unwrap().debug_enabled {
         println!();
-        print_board(shared_flags);
+        // print_board(shared_flags);
+        print_board_with_indexes(shared_flags);
     }
+    println!();
+
+    println!("All: {:?}", shared_flags.lock().unwrap().position.piece_set.all);
+    println!("White: {:?}", shared_flags.lock().unwrap().position.piece_set.white);
+    println!("Black: {:?}", shared_flags.lock().unwrap().position.piece_set.black);
 }
 
 fn handle_fen_char(shared_flags: &Arc<Mutex<SharedFlags>>, mut index: &mut usize, char: char) {
@@ -774,6 +808,49 @@ fn print_board(shared_flags: &Arc<Mutex<SharedFlags>>) {
             print!("{}  ", piece_to_char(shared_flags.lock().unwrap().position.board[index]));
             index += 1;
         }
+        println!();
+    }
+}
+
+fn print_index_reference(shared_flags: &Arc<Mutex<SharedFlags>>) {
+    let mut index:usize = 72;
+
+    for _i in 0..8  {
+        index -= 16;
+        for _j in 0..8  {
+            if index < 10 {
+                print!("0{}  ", index);
+            } else {
+                print!("{}  ", index);
+            }
+            index += 1;
+        }
+        println!();
+    }
+}
+
+fn print_board_with_indexes(shared_flags: &Arc<Mutex<SharedFlags>>) {
+    let mut index:usize = 72;
+
+    for _i in 0..8  {
+        index -= 16;
+        for _j in 0..8  {
+
+            let piece_char = piece_to_char(shared_flags.lock().unwrap().position.board[index]);
+
+            if piece_char == '-' {
+                print!("----  ");
+            } else {
+                if index < 10 {
+                    print!("0{}-{}  ", index, piece_char);
+                } else {
+                    print!("{}-{}  ", index, piece_char);
+                }
+            }
+
+            index += 1;
+        }
+        println!();
         println!();
     }
 }
