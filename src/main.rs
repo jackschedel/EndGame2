@@ -2,7 +2,6 @@ use std::io::{self, BufRead};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::str::SplitWhitespace;
-use crate::HalfmoveFlag::{BishopPromotion, Castle, DoublePawnMove, EnPassant, KnightPromotion, QueenPromotion, RookPromotion};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum Color {
@@ -29,6 +28,15 @@ enum HalfmoveFlag {
     Castle,
     EnPassant,
     DoublePawnMove,
+}
+
+impl Color {
+    fn opposite(&self) -> Color {
+        match *self {
+            Color::Black => Color::White,
+            Color::White => Color::Black
+        }
+    }
 }
 
 impl Piece {
@@ -78,6 +86,17 @@ impl Piece {
 
     fn is_king(&self) -> bool {
         matches!(self, Piece::King(_))
+    }
+
+    fn get_color(&self) -> Color {
+        match self {
+            Piece::Pawn(color)
+            | Piece::Knight(color)
+            | Piece::Bishop(color)
+            | Piece::Rook(color)
+            | Piece::Queen(color)
+            | Piece::King(color) => *color,
+        }
     }
 }
 
@@ -278,6 +297,101 @@ fn position_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Shar
 }
 
 fn execute_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, to_exec: HalfMove) {
+    // no legality checks, assumes that to_exec is legal
+
+    shared_flags.lock().unwrap().position.halfmove_clock += 1;
+
+    let piece: Piece;
+
+    let color = shared_flags.lock().unwrap().position.board[to_exec.from as usize].unwrap().get_color();
+
+    match to_exec.flag {
+        Some(HalfmoveFlag::KnightPromotion) => {
+            piece = Piece::Knight(color);
+        },
+        Some(HalfmoveFlag::BishopPromotion) => {
+            piece = Piece::Bishop(color);
+        },
+        Some(HalfmoveFlag::RookPromotion) => {
+            piece = Piece::Rook(color);
+        },
+        Some(HalfmoveFlag::QueenPromotion) => {
+            piece = Piece::Queen(color);
+        },
+        _ => {
+            piece = shared_flags.lock().unwrap().position.board[to_exec.from as usize].unwrap();
+        }
+    }
+
+    if to_exec.flag != Some(HalfmoveFlag::Castle) {
+        if shared_flags.lock().unwrap().position.board[to_exec.to as usize] != None ||
+            shared_flags.lock().unwrap().position.board[to_exec.from as usize].unwrap().is_pawn() {
+            shared_flags.lock().unwrap().position.halfmove_clock = 0;
+        }
+
+        shared_flags.lock().unwrap().position.board[to_exec.to as usize] = Some(piece);
+    } else {
+        shared_flags.lock().unwrap().position.board[to_exec.to as usize] = None;
+        if color == Color::White {
+            if to_exec.to == 0 {
+                shared_flags.lock().unwrap().position.board[2] = Some(Piece::King(color));
+                shared_flags.lock().unwrap().position.board[3] = Some(Piece::Rook(color));
+            } else {
+                // to_exec.to = 7
+                shared_flags.lock().unwrap().position.board[6] = Some(Piece::King(color));
+                shared_flags.lock().unwrap().position.board[5] = Some(Piece::Rook(color));
+            }
+
+            shared_flags.lock().unwrap().position.castling_rights.white.kingside = false;
+            shared_flags.lock().unwrap().position.castling_rights.white.queenside = false;
+        } else {
+            if to_exec.to == 56 {
+                shared_flags.lock().unwrap().position.board[58] = Some(Piece::King(color));
+                shared_flags.lock().unwrap().position.board[59] = Some(Piece::Rook(color));
+            } else {
+                // to_exec.to = 63
+                shared_flags.lock().unwrap().position.board[62] = Some(Piece::King(color));
+                shared_flags.lock().unwrap().position.board[61] = Some(Piece::Rook(color));
+
+            }
+
+            shared_flags.lock().unwrap().position.castling_rights.black.kingside = false;
+            shared_flags.lock().unwrap().position.castling_rights.black.queenside = false;
+        }
+    }
+
+    shared_flags.lock().unwrap().position.board[to_exec.from as usize] = None;
+
+    if to_exec.flag == Some(HalfmoveFlag::EnPassant) {
+        let target = shared_flags.lock().unwrap().position.en_passant_target.unwrap();
+
+        shared_flags.lock().unwrap().position.board[target as usize] = None;
+    }
+
+    if to_exec.flag == Some(HalfmoveFlag::DoublePawnMove) {
+        let middle_space:u8;
+
+        if to_exec.from > to_exec.to {
+            middle_space = to_exec.from - 8;
+        } else {
+            middle_space = to_exec.from + 8;
+        }
+
+        shared_flags.lock().unwrap().position.en_passant_target = Some(middle_space);
+    } else {
+        shared_flags.lock().unwrap().position.en_passant_target = None;
+    }
+
+    shared_flags.lock().unwrap().position.move_next = color.opposite();
+
+    if shared_flags.lock().unwrap().position.move_next == Color::Black {
+        shared_flags.lock().unwrap().position.fullmove_number += 1;
+        shared_flags.lock().unwrap().position.move_next = Color::White;
+    } else {
+        shared_flags.lock().unwrap().position.move_next = Color::Black;
+    }
+
+    display_debug(shared_flags);
 
 }
 
@@ -332,7 +446,7 @@ fn string_to_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, move_string: &str)
             match (coord2 / 8) - (coord1 / 8) {
                 1 => {},
                 2 => {
-                    flag = Option::from(DoublePawnMove);
+                    flag = Some(HalfmoveFlag::DoublePawnMove);
                 },
                 _ => {
                     println!("Error - invalid pawn move from {} to {}!", coord1_str, coord2_str);
@@ -359,7 +473,7 @@ fn string_to_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, move_string: &str)
             let en_passant_target = shared_flags.lock().unwrap().position.en_passant_target;
 
             if Some(coord2) == en_passant_target {
-                flag = Option::from(EnPassant);
+                flag = Some(HalfmoveFlag::EnPassant);
             }
 
             // note: technically no checks for backwards pawn captures
@@ -392,7 +506,7 @@ fn string_to_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, move_string: &str)
                 return None;
             }
 
-            flag = Option::from(Castle);
+            flag = Some(HalfmoveFlag::Castle);
 
             // note: no checks for whether the player is allowed to castle
             // these checks are just for debugging, will want to add check vs genned moves later
@@ -416,16 +530,16 @@ fn string_to_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, move_string: &str)
 
         match move_string.chars().nth(char_index + 2) {
             Some('n') => {
-                flag = Option::from(KnightPromotion);
+                flag = Some(HalfmoveFlag::KnightPromotion);
             },
             Some('b') => {
-                flag = Option::from(BishopPromotion);
+                flag = Some(HalfmoveFlag::BishopPromotion);
             },
             Some('r') => {
-                flag = Option::from(RookPromotion);
+                flag = Some(HalfmoveFlag::RookPromotion);
             },
             Some('q') => {
-                flag = Option::from(QueenPromotion);
+                flag = Some(HalfmoveFlag::QueenPromotion);
             },
             _ => {}
         }
@@ -436,7 +550,7 @@ fn string_to_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, move_string: &str)
     // all checks should be tacked on after the fact
     // don't need to worry about efficiency because this will never be called unless debugging
 
-    return Option::from(HalfMove {
+    return Some(HalfMove {
         from: coord1,
         to: coord2,
         flag
@@ -465,7 +579,7 @@ fn set_flags_from_fen(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Sh
         if en_passant_token == "-" {
             shared_flags.lock().unwrap().position.en_passant_target = None;
         } else {
-            let en_passant_target = Option::from(coord_to_int(en_passant_token));
+            let en_passant_target = Some(coord_to_int(en_passant_token));
             shared_flags.lock().unwrap().position.en_passant_target = en_passant_target;
         }
     }
@@ -546,6 +660,10 @@ fn set_board_from_fen(fen: &str, shared_flags: &Arc<Mutex<SharedFlags>>) {
         }
     }
 
+    display_debug(shared_flags);
+}
+
+fn display_debug(shared_flags: &Arc<Mutex<SharedFlags>>) {
     if shared_flags.lock().unwrap().debug_enabled {
         println!();
         print_board(shared_flags);
@@ -554,18 +672,18 @@ fn set_board_from_fen(fen: &str, shared_flags: &Arc<Mutex<SharedFlags>>) {
 
 fn handle_fen_char(shared_flags: &Arc<Mutex<SharedFlags>>, mut index: &mut usize, char: char) {
     match char {
-        'P' => shared_flags.lock().unwrap().position.board[*index] = Option::from(Piece::Pawn(Color::White)),
-        'N' => shared_flags.lock().unwrap().position.board[*index] = Option::from(Piece::Knight(Color::White)),
-        'B' => shared_flags.lock().unwrap().position.board[*index] = Option::from(Piece::Bishop(Color::White)),
-        'R' => shared_flags.lock().unwrap().position.board[*index] = Option::from(Piece::Rook(Color::White)),
-        'Q' => shared_flags.lock().unwrap().position.board[*index] = Option::from(Piece::Queen(Color::White)),
-        'K' => shared_flags.lock().unwrap().position.board[*index] = Option::from(Piece::King(Color::White)),
-        'p' => shared_flags.lock().unwrap().position.board[*index] = Option::from(Piece::Pawn(Color::Black)),
-        'n' => shared_flags.lock().unwrap().position.board[*index] = Option::from(Piece::Knight(Color::Black)),
-        'b' => shared_flags.lock().unwrap().position.board[*index] = Option::from(Piece::Bishop(Color::Black)),
-        'r' => shared_flags.lock().unwrap().position.board[*index] = Option::from(Piece::Rook(Color::Black)),
-        'q' => shared_flags.lock().unwrap().position.board[*index] = Option::from(Piece::Queen(Color::Black)),
-        'k' => shared_flags.lock().unwrap().position.board[*index] = Option::from(Piece::King(Color::Black)),
+        'P' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Pawn(Color::White)),
+        'N' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Knight(Color::White)),
+        'B' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Bishop(Color::White)),
+        'R' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Rook(Color::White)),
+        'Q' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Queen(Color::White)),
+        'K' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::King(Color::White)),
+        'p' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Pawn(Color::Black)),
+        'n' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Knight(Color::Black)),
+        'b' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Bishop(Color::Black)),
+        'r' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Rook(Color::Black)),
+        'q' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Queen(Color::Black)),
+        'k' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::King(Color::Black)),
         _ => handle_fen_digit(&mut index, char)
     }
 }
