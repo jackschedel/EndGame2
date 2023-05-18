@@ -2,6 +2,7 @@ use std::io::{self, BufRead};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::str::SplitWhitespace;
+use hashbrown::HashSet;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum Color {
@@ -112,6 +113,46 @@ struct ColorCastlingRights {
     queenside: bool,
 }
 
+struct PieceSet {
+    all: HashSet<u8>,
+    white: HashSet<u8>,
+    black: HashSet<u8>
+}
+
+impl PieceSet {
+    fn remove_index(&mut self, index: u8, color: Color) {
+        self.all.remove(&index);
+
+        if color == Color::Black {
+            self.black.remove(&index);
+        } else {
+            self.white.remove(&index);
+        }
+    }
+
+    fn add_index(&mut self, index: u8, color: Color) {
+        self.all.insert(index);
+
+        if color == Color::Black {
+            self.black.insert(index);
+        } else {
+            self.white.insert(index);
+        }
+    }
+
+    fn move_index(&mut self, index: u8, color: Color) {
+        self.all.insert(index);
+
+        if color == Color::Black {
+            self.black.insert(index);
+            self.white.remove(&index);
+        } else {
+            self.white.insert(index);
+            self.black.remove(&index);
+        }
+    }
+}
+
 struct CastlingRights {
     black: ColorCastlingRights,
     white: ColorCastlingRights,
@@ -119,6 +160,7 @@ struct CastlingRights {
 
 struct Position {
     board: [Option<Piece>; 64],
+    piece_set: PieceSet,
     move_next: Color,
     castling_rights: CastlingRights,
     en_passant_target: Option<u8>,
@@ -156,6 +198,11 @@ fn main() {
         ponder_hit: false,
         position: Position {
             board: [None; 64],
+            piece_set: PieceSet {
+                all: HashSet::new(),
+                white: HashSet::new(),
+                black: HashSet::new(),
+            },
             move_next: Color::White,
             castling_rights: CastlingRights {
                 black: ColorCastlingRights {
@@ -686,6 +733,17 @@ fn handle_fen_char(shared_flags: &Arc<Mutex<SharedFlags>>, mut index: &mut usize
         'k' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::King(Color::Black)),
         _ => handle_fen_digit(&mut index, char)
     }
+
+    match char {
+        'P' | 'N' | 'B' | 'R' | 'Q' | 'K' => {
+            shared_flags.lock().unwrap().position.piece_set.add_index(*index as u8, Color::White);
+        },
+        'p' | 'n' | 'b' | 'r' | 'q' | 'k' => {
+            shared_flags.lock().unwrap().position.piece_set.add_index(*index as u8, Color::Black);
+        },
+        _ => { }
+    }
+
 }
 
 fn piece_to_char(piece: Option<Piece>) -> char {
