@@ -168,6 +168,10 @@ struct Position {
     fullmove_number: u16,
 }
 
+struct EngineOptions {
+    multi_pv: u8,
+}
+
 struct SharedFlags {
     uci_enabled: bool,
     debug_enabled: bool,
@@ -179,6 +183,7 @@ struct SharedFlags {
     can_quit: bool,
     ponder_hit: bool,
     position: Position,
+    options: EngineOptions,
 }
 
 
@@ -217,6 +222,9 @@ fn main() {
             halfmove_clock: 0,
             fullmove_number: 0,
         },
+        options: EngineOptions {
+            multi_pv: 3,
+        }
     }));
 
     let shared_flags_clone = Arc::clone(&shared_flags);
@@ -228,11 +236,19 @@ fn main() {
     // Main program logic
     let shared_flags_clone = Arc::clone(&shared_flags);
 
+/*
     handle_command("uci".to_string(), &shared_flags);
 
     handle_command("debug on".to_string(), &shared_flags);
 
-    handle_command("position fen 8/8/4k3/1p2p2p/PPpn3P/2N4r/5K2/2R5 b - - 2 53 moves Nd4b3".to_string(), &shared_flags);
+    //let fen = "position fen 8/8/4k3/1p2p2p/PPpn3P/2N4r/5K2/2R5 b - - 2 53 moves Nd4b3";
+
+    let fen = "position startpos";
+
+
+    handle_command(fen.to_string(), &shared_flags);
+*/
+
 
     /*
     thread::spawn(move ||  {
@@ -274,17 +290,17 @@ fn handle_command(input: String, shared_flags: &Arc<Mutex<SharedFlags>>) {
     if let Some(word) = command.next() {
         if !shared_flags.lock().unwrap().uci_enabled {
             if word == "uci" {
-                shared_flags.lock().unwrap().uci_enabled = true;
+                uci_command(shared_flags);
             } else {
                 println!("Please enable UCI mode first!")
             }
         } else {
-            parse_cli_command(shared_flags, &mut command, word);
+            parse_uci_command(shared_flags, &mut command, word);
         }
     }
 }
 
-fn parse_cli_command(shared_flags: &Arc<Mutex<SharedFlags>>, mut command: &mut SplitWhitespace, word: &str) {
+fn parse_uci_command(shared_flags: &Arc<Mutex<SharedFlags>>, mut command: &mut SplitWhitespace, word: &str) {
     match word {
         "uci" => uci_command(shared_flags),
         "debug" => debug_command(&mut command, shared_flags),
@@ -311,6 +327,11 @@ fn stop_command(shared_flags: &Arc<Mutex<SharedFlags>>) {
 
 fn uci_command(shared_flags: &Arc<Mutex<SharedFlags>>) {
     shared_flags.lock().unwrap().uci_enabled = true;
+
+    println!("id name {}", shared_flags.lock().unwrap().registration_name);
+    println!("id author Koala");
+
+    println!("uciok");
 }
 
 fn position_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlags>>) {
@@ -909,10 +930,29 @@ fn parse_register_tokenset(command: &mut SplitWhitespace, token1: Option<&str>, 
 }
 
 fn setoption_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlags>>) {
-    match command.next() {
-        //Some("") => {},
-        _ => println!("Invalid option!")
+
+    if command.next() != Some("name") {
+        println!("Invalid setoption command - expected name token!");
+        return;
     }
+
+    let mut option = command.next();
+
+    while option != None {
+        match option {
+            Some("MultiPV") => {
+                if command.next() != Some("value") {
+                    println!("Invalid setoption command - expected value token!");
+                    return;
+                }
+                shared_flags.lock().unwrap().options.multi_pv = command.next().unwrap().chars().nth(0).unwrap() as u8;
+            },
+            _ => println!("Invalid option: {}!", option.unwrap())
+        }
+        option = command.next();
+    }
+
+    // TODO: add malformed option command check
 }
 
 fn isready_command(shared_flags: &Arc<Mutex<SharedFlags>>) {
