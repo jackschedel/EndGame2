@@ -863,6 +863,7 @@ fn piece_to_char(piece: Option<Piece>, use_symbols: bool) -> char {
             Some(Piece::King(Color::Black)) => return '♚',
             _ => {}
         }
+        return '⚊';
     } else {
         match piece {
             Some(Piece::Pawn(Color::White)) => return 'P',
@@ -879,8 +880,8 @@ fn piece_to_char(piece: Option<Piece>, use_symbols: bool) -> char {
             Some(Piece::King(Color::Black)) => return 'k',
             _ => {}
         }
+        return '-';
     }
-    return '⚊';
 }
 
 fn print_board(shared_flags: &Arc<Mutex<SharedFlags>>) {
@@ -890,7 +891,9 @@ fn print_board(shared_flags: &Arc<Mutex<SharedFlags>>) {
         index -= 16;
         for _j in 0..8  {
             let use_symbols = shared_flags.lock().unwrap().options.debug_use_symbols;
-            print!("{}  ", piece_to_char(shared_flags.lock().unwrap().position.board[index], use_symbols));
+            let piece_char = piece_to_char(shared_flags.lock().unwrap().position.board[index], use_symbols);
+
+            print!("{}  ", piece_char);
             index += 1;
         }
         println!();
@@ -923,8 +926,8 @@ fn print_board_with_indexes(shared_flags: &Arc<Mutex<SharedFlags>>) {
             let use_symbols = shared_flags.lock().unwrap().options.debug_use_symbols;
             let piece_char = piece_to_char(shared_flags.lock().unwrap().position.board[index], use_symbols);
 
-            if piece_char == '⚊' {
-                print!("  ⚊   ");
+            if piece_char == '-' || piece_char == '⚊' {
+                print!("  {}   ", piece_char);
             } else {
                 if index < 10 {
                     print!("0{}-{}  ", index, piece_char);
