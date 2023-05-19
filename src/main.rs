@@ -236,18 +236,29 @@ fn main() {
     // Main program logic
     let shared_flags_clone = Arc::clone(&shared_flags);
 
-/*
+
     handle_command("uci".to_string(), &shared_flags);
 
     handle_command("debug on".to_string(), &shared_flags);
 
-    //let fen = "position fen 8/8/4k3/1p2p2p/PPpn3P/2N4r/5K2/2R5 b - - 2 53 moves Nd4b3";
+    // general FEN loading
+    //let position_cmd = "position fen 8/8/4k3/1p2p2p/PPpn3P/2N4r/5K2/2R5 b - - 2 53 moves Nd4b3";
 
-    let fen = "position startpos";
+    // general moving around
+    //let position_cmd = "position startpos moves e2e4 e7e5 Ng1f3 Nb8c6 Bf1b5 a7a6 Bb5xc6 d7xc6 e1h1 f7f6 d2d4";
+
+    // en passant
+    //let position_cmd = "position startpos moves d2d4 h7h6 d4d5 e7e5 d5xe6";
+
+    // castling kingside
+    //let position_cmd = "position startpos moves g2g3 Ng8f6 Ng1f3 Nf6g8 Bf1g2 Ng8f6 e1h1 g7g6 Nf3e1 Bf8g7 Ne1f3 e8h8";
+
+    // castling queenside
+    let position_cmd = "position startpos moves e2e3 e7e6 Qd1e2 Qd8e7 d2d3 d7d6 Bc1d2 Bc8d7 Nb1c3 Nb8c6 e1a1 e8a8";
 
 
-    handle_command(fen.to_string(), &shared_flags);
-*/
+    handle_command(position_cmd.to_string(), &shared_flags);
+
 
 
     /*
@@ -458,7 +469,13 @@ fn execute_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, to_exec: HalfMove) {
     shared_flags.lock().unwrap().position.piece_set.remove_index(to_exec.from, color);
 
     if to_exec.flag == Some(HalfmoveFlag::EnPassant) {
-        let target = shared_flags.lock().unwrap().position.en_passant_target.unwrap();
+        let mut target = shared_flags.lock().unwrap().position.en_passant_target.unwrap();
+
+        if (target / 8) == 5 {
+            target -= 8;
+        } else {
+            target += 8;
+        }
 
         shared_flags.lock().unwrap().position.board[target as usize] = None;
         shared_flags.lock().unwrap().position.piece_set.remove_index(target, color.opposite());
@@ -539,7 +556,7 @@ fn string_to_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, move_string: &str)
                 return None;
             }
 
-            match (coord2 / 8) - (coord1 / 8) {
+            match (coord2 / 8).abs_diff(coord1 / 8) {
                 1 => {},
                 2 => {
                     flag = Some(HalfmoveFlag::DoublePawnMove);
