@@ -172,6 +172,7 @@ struct EngineOptions {
     multi_pv: u8,
     debug_indexes: bool,
     debug_sets_display: bool,
+    debug_use_symbols: bool,
 }
 
 struct SharedFlags {
@@ -228,6 +229,7 @@ fn main() {
             multi_pv: 1,
             debug_indexes: true,
             debug_sets_display: false,
+            debug_use_symbols: false,
         }
     }));
 
@@ -249,7 +251,7 @@ fn main() {
     //let position_cmd = "position fen 8/8/4k3/1p2p2p/PPpn3P/2N4r/5K2/2R5 b - - 2 53 moves Nd4b3";
 
     // general moving around
-    //let position_cmd = "position startpos moves e2e4 e7e5 Ng1f3 Nb8c6 Bf1b5 a7a6 Bb5xc6 d7xc6 e1h1 f7f6 d2d4";
+    let position_cmd = "position startpos moves e2e4 e7e5 Ng1f3 Nb8c6 Bf1b5 a7a6 Bb5xc6 d7xc6 e1h1 f7f6 d2d4";
 
     // en passant
     //let position_cmd = "position startpos moves d2d4 h7h6 d4d5 e7e5 d5xe6";
@@ -258,7 +260,10 @@ fn main() {
     //let position_cmd = "position startpos moves g2g3 Ng8f6 Ng1f3 Nf6g8 Bf1g2 Ng8f6 e1h1 g7g6 Nf3e1 Bf8g7 Ne1f3 e8h8";
 
     // castling queenside
-    let position_cmd = "position startpos moves e2e3 e7e6 Qd1e2 Qd8e7 d2d3 d7d6 Bc1d2 Bc8d7 Nb1c3 Nb8c6 e1a1 e8a8";
+    //let position_cmd = "position startpos moves e2e3 e7e6 Qd1e2 Qd8e7 d2d3 d7d6 Bc1d2 Bc8d7 Nb1c3 Nb8c6 e1a1 e8a8";
+
+    // startpos+1
+    //let position_cmd = "position startpos moves e2e3";
 
 
     handle_command(position_cmd.to_string(), &shared_flags);
@@ -358,6 +363,7 @@ fn id_send(shared_flags: &Arc<Mutex<SharedFlags>>) {
 fn option_send(shared_flags: &Arc<Mutex<SharedFlags>>) {
     println!("option name DebugIndexes type check default true");
     println!("option name DebugSetsDisplay type check default false");
+    println!("option name DebugUseSymbols type check default false");
 }
 
 fn position_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlags>>) {
@@ -840,23 +846,41 @@ fn handle_fen_char(shared_flags: &Arc<Mutex<SharedFlags>>, mut index: &mut usize
 
 }
 
-fn piece_to_char(piece: Option<Piece>) -> char {
-    match piece {
-        Some(Piece::Pawn(Color::White)) => return 'P',
-        Some(Piece::Knight(Color::White)) => return 'N',
-        Some(Piece::Bishop(Color::White)) => return 'B',
-        Some(Piece::Rook(Color::White)) => return 'R',
-        Some(Piece::Queen(Color::White)) => return 'Q',
-        Some(Piece::King(Color::White)) => return 'K',
-        Some(Piece::Pawn(Color::Black)) => return 'p',
-        Some(Piece::Knight(Color::Black)) => return 'n',
-        Some(Piece::Bishop(Color::Black)) => return 'b',
-        Some(Piece::Rook(Color::Black)) => return 'r',
-        Some(Piece::Queen(Color::Black)) => return 'q',
-        Some(Piece::King(Color::Black)) => return 'k',
-        _ => {}
+fn piece_to_char(piece: Option<Piece>, use_symbols: bool) -> char {
+    if use_symbols {
+        match piece {
+            Some(Piece::Pawn(Color::White)) => return '♙',
+            Some(Piece::Knight(Color::White)) => return '♘',
+            Some(Piece::Bishop(Color::White)) => return '♗',
+            Some(Piece::Rook(Color::White)) => return '♖',
+            Some(Piece::Queen(Color::White)) => return '♕',
+            Some(Piece::King(Color::White)) => return '♔',
+            Some(Piece::Pawn(Color::Black)) => return '♟',
+            Some(Piece::Knight(Color::Black)) => return '♞',
+            Some(Piece::Bishop(Color::Black)) => return '♝',
+            Some(Piece::Rook(Color::Black)) => return '♜',
+            Some(Piece::Queen(Color::Black)) => return '♛',
+            Some(Piece::King(Color::Black)) => return '♚',
+            _ => {}
+        }
+    } else {
+        match piece {
+            Some(Piece::Pawn(Color::White)) => return 'P',
+            Some(Piece::Knight(Color::White)) => return 'N',
+            Some(Piece::Bishop(Color::White)) => return 'B',
+            Some(Piece::Rook(Color::White)) => return 'R',
+            Some(Piece::Queen(Color::White)) => return 'Q',
+            Some(Piece::King(Color::White)) => return 'K',
+            Some(Piece::Pawn(Color::Black)) => return 'p',
+            Some(Piece::Knight(Color::Black)) => return 'n',
+            Some(Piece::Bishop(Color::Black)) => return 'b',
+            Some(Piece::Rook(Color::Black)) => return 'r',
+            Some(Piece::Queen(Color::Black)) => return 'q',
+            Some(Piece::King(Color::Black)) => return 'k',
+            _ => {}
+        }
     }
-    return '-';
+    return '⚊';
 }
 
 fn print_board(shared_flags: &Arc<Mutex<SharedFlags>>) {
@@ -865,7 +889,8 @@ fn print_board(shared_flags: &Arc<Mutex<SharedFlags>>) {
     for _i in 0..8  {
         index -= 16;
         for _j in 0..8  {
-            print!("{}  ", piece_to_char(shared_flags.lock().unwrap().position.board[index]));
+            let use_symbols = shared_flags.lock().unwrap().options.debug_use_symbols;
+            print!("{}  ", piece_to_char(shared_flags.lock().unwrap().position.board[index], use_symbols));
             index += 1;
         }
         println!();
@@ -895,11 +920,11 @@ fn print_board_with_indexes(shared_flags: &Arc<Mutex<SharedFlags>>) {
     for _i in 0..8  {
         index -= 16;
         for _j in 0..8  {
+            let use_symbols = shared_flags.lock().unwrap().options.debug_use_symbols;
+            let piece_char = piece_to_char(shared_flags.lock().unwrap().position.board[index], use_symbols);
 
-            let piece_char = piece_to_char(shared_flags.lock().unwrap().position.board[index]);
-
-            if piece_char == '-' {
-                print!("----  ");
+            if piece_char == '⚊' {
+                print!("  ⚊   ");
             } else {
                 if index < 10 {
                     print!("0{}-{}  ", index, piece_char);
@@ -1011,6 +1036,21 @@ fn setoption_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Sha
                 match command.next() {
                     Some("true") => shared_flags.lock().unwrap().options.debug_sets_display = true,
                     Some("false") => shared_flags.lock().unwrap().options.debug_sets_display = false,
+                    _ => {
+                        println!("Invalid setoption command - expected true or false!");
+                        return;
+                    }
+                }
+            },
+            Some("DebugUseSymbols") => {
+                if command.next() != Some("value") {
+                    println!("Invalid setoption command - expected value token!");
+                    return;
+                }
+
+                match command.next() {
+                    Some("true") => shared_flags.lock().unwrap().options.debug_use_symbols = true,
+                    Some("false") => shared_flags.lock().unwrap().options.debug_use_symbols = false,
                     _ => {
                         println!("Invalid setoption command - expected true or false!");
                         return;
