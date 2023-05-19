@@ -170,6 +170,8 @@ struct Position {
 
 struct EngineOptions {
     multi_pv: u8,
+    debug_indexes: bool,
+    debug_sets_display: bool,
 }
 
 struct SharedFlags {
@@ -223,7 +225,9 @@ fn main() {
             fullmove_number: 0,
         },
         options: EngineOptions {
-            multi_pv: 3,
+            multi_pv: 1,
+            debug_indexes: true,
+            debug_sets_display: false,
         }
     }));
 
@@ -306,12 +310,12 @@ fn handle_command(input: String, shared_flags: &Arc<Mutex<SharedFlags>>) {
                 println!("Please enable UCI mode first!")
             }
         } else {
-            parse_uci_command(shared_flags, &mut command, word);
+            parse_command(shared_flags, &mut command, word);
         }
     }
 }
 
-fn parse_uci_command(shared_flags: &Arc<Mutex<SharedFlags>>, mut command: &mut SplitWhitespace, word: &str) {
+fn parse_command(shared_flags: &Arc<Mutex<SharedFlags>>, mut command: &mut SplitWhitespace, word: &str) {
     match word {
         "uci" => uci_command(shared_flags),
         "debug" => debug_command(&mut command, shared_flags),
@@ -339,10 +343,21 @@ fn stop_command(shared_flags: &Arc<Mutex<SharedFlags>>) {
 fn uci_command(shared_flags: &Arc<Mutex<SharedFlags>>) {
     shared_flags.lock().unwrap().uci_enabled = true;
 
-    println!("id name {}", shared_flags.lock().unwrap().registration_name);
-    println!("id author Koala");
+    id_send(shared_flags);
+
+    option_send(shared_flags);
 
     println!("uciok");
+}
+
+fn id_send(shared_flags: &Arc<Mutex<SharedFlags>>) {
+    println!("id name {}", shared_flags.lock().unwrap().registration_name);
+    println!("id author Koala");
+}
+
+fn option_send(shared_flags: &Arc<Mutex<SharedFlags>>) {
+    println!("option name DebugIndexes type check default true");
+    println!("option name DebugSetsDisplay type check default false");
 }
 
 fn position_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlags>>) {
@@ -372,7 +387,7 @@ fn position_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Shar
     let mut move_token = command.next();
 
     while move_token != None {
-        
+
         let parsed_move = string_to_halfmove(shared_flags, move_token.unwrap());
 
         if parsed_move == None {
@@ -779,14 +794,21 @@ fn set_board_from_fen(fen: &str, shared_flags: &Arc<Mutex<SharedFlags>>) {
 fn display_debug(shared_flags: &Arc<Mutex<SharedFlags>>) {
     if shared_flags.lock().unwrap().debug_enabled {
         println!();
-        // print_board(shared_flags);
-        print_board_with_indexes(shared_flags);
-    }
-    println!();
 
-    println!("All: {:?}", shared_flags.lock().unwrap().position.piece_set.all);
-    println!("White: {:?}", shared_flags.lock().unwrap().position.piece_set.white);
-    println!("Black: {:?}", shared_flags.lock().unwrap().position.piece_set.black);
+        if shared_flags.lock().unwrap().options.debug_indexes {
+            print_board_with_indexes(shared_flags);
+        } else {
+            print_board(shared_flags);
+        }
+
+        if shared_flags.lock().unwrap().options.debug_sets_display {
+            println!("All: {:?}", shared_flags.lock().unwrap().position.piece_set.all);
+            println!("White: {:?}", shared_flags.lock().unwrap().position.piece_set.white);
+            println!("Black: {:?}", shared_flags.lock().unwrap().position.piece_set.black);
+        }
+        println!();
+        println!();
+    }
 }
 
 fn handle_fen_char(shared_flags: &Arc<Mutex<SharedFlags>>, mut index: &mut usize, char: char) {
@@ -962,9 +984,43 @@ fn setoption_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Sha
                     println!("Invalid setoption command - expected value token!");
                     return;
                 }
+
                 shared_flags.lock().unwrap().options.multi_pv = command.next().unwrap().chars().nth(0).unwrap() as u8;
             },
-            _ => println!("Invalid option: {}!", option.unwrap())
+            Some("DebugIndexes") => {
+                if command.next() != Some("value") {
+                    println!("Invalid setoption command - expected value token!");
+                    return;
+                }
+
+                match command.next() {
+                    Some("true") => shared_flags.lock().unwrap().options.debug_indexes = true,
+                    Some("false") => shared_flags.lock().unwrap().options.debug_indexes = false,
+                    _ => {
+                        println!("Invalid setoption command - expected true or false!");
+                        return;
+                    }
+                }
+            },
+            Some("DebugSetsDisplay") => {
+                if command.next() != Some("value") {
+                    println!("Invalid setoption command - expected value token!");
+                    return;
+                }
+
+                match command.next() {
+                    Some("true") => shared_flags.lock().unwrap().options.debug_sets_display = true,
+                    Some("false") => shared_flags.lock().unwrap().options.debug_sets_display = false,
+                    _ => {
+                        println!("Invalid setoption command - expected true or false!");
+                        return;
+                    }
+                }
+            },
+            _ => {
+                println!("Invalid option: {}!", option.unwrap());
+                return;
+            }
         }
         option = command.next();
     }
