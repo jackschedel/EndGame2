@@ -955,6 +955,31 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
 
 }
 
+fn gen_pseudolegal_moves(color: Color, shared_flags: &Arc<Mutex<SharedFlags>>) -> Vec<HalfMove> {
+
+    let piece_set: HashSet<u8>;
+
+    if color == Color::Black {
+        piece_set = shared_flags.lock().unwrap().position.piece_set.black.clone();
+    } else {
+        piece_set = shared_flags.lock().unwrap().position.piece_set.white.clone();
+    }
+
+    let mut moves: Vec<HalfMove> = Vec::new();
+
+    for i in piece_set {
+        // gen pseudolegal moves for each piece at index i
+        // add each move to moves vector
+
+        // no need to gen new threads here, will likely be suboptimal.
+        // Our tree will exponentially grow so fast itd be pointless to do it here.
+
+        // just a thought, if we make the eval properly, do we even need to check for legality?
+    }
+
+    return moves;
+}
+
 fn quit_command(shared_flags: &Arc<Mutex<SharedFlags>>) {
     shared_flags.lock().unwrap().should_stop = true;
     shared_flags.lock().unwrap().should_quit = true;
