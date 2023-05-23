@@ -529,8 +529,6 @@ fn execute_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, to_exec: HalfMove) {
         shared_flags.lock().unwrap().position.en_passant_target = None;
     }
 
-    shared_flags.lock().unwrap().position.move_next = color.opposite();
-
     if shared_flags.lock().unwrap().position.move_next == Color::Black {
         shared_flags.lock().unwrap().position.fullmove_number += 1;
         shared_flags.lock().unwrap().position.move_next = Color::White;
