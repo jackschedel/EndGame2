@@ -1005,6 +1005,7 @@ fn gen_piece_pseudolegal_moves(piece_index: u8, position: &Position) -> Vec<Half
     match piece_option {
         Some(Piece::Pawn(Color::White)) => {return gen_white_pawn_pseudolegal_moves(piece_index, position)},
         Some(Piece::Pawn(Color::Black)) => {return gen_black_pawn_pseudolegal_moves(piece_index, position)},
+        Some(Piece::Knight(_)) => {return gen_knight_pseudolegal_moves(piece_index, position)},
         Some(_) => {},
         None => panic!("Error, index contained in piece_set has no piece on board!")
     }
@@ -1012,54 +1013,130 @@ fn gen_piece_pseudolegal_moves(piece_index: u8, position: &Position) -> Vec<Half
     return Vec::new();
 }
 
-fn gen_white_pawn_pseudolegal_moves(piece_index: u8, position: &Position) -> Vec<HalfMove> {
+fn gen_knight_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
     let mut moves: Vec<HalfMove> = Vec::new();
 
     let board = position.board;
-    let piece = board[piece_index as usize].unwrap();
+
+    // total of 8 move combinations
+
+    // first, check bounds for length 2, then check bounds for length 1
+
+    // up 2
+    if (index / 8) <= 5 {
+        // right 1
+        if (index % 8) <= 6 {
+            gen_halfmove(17, index, position, &mut moves);
+        }
+
+        // left 1
+        if (index % 8) >= 1 {
+            gen_halfmove(15, index, position, &mut moves);
+        }
+    }
+
+   // right 2
+    if (index % 8) <= 5 {
+        // up 1
+        if (index / 8) <= 6 {
+            gen_halfmove(10, index, position, &mut moves);
+        }
+
+        // down 1
+        if (index / 8) >= 1 {
+            gen_halfmove(-6, index, position, &mut moves);
+        }
+    }
+
+    // down 2
+    if (index / 8) >= 2 {
+        // right 1
+        if (index % 8) <= 6 {
+            gen_halfmove(-15, index, position, &mut moves);
+        }
+
+        // left 1
+        if (index % 8) >= 1 {
+            gen_halfmove(-17, index, position, &mut moves);
+        }
+    }
+
+    // left 2
+    if (index % 8) >= 2 {
+        // up 1
+        if (index / 8) <= 6 {
+            gen_halfmove(6, index, position, &mut moves);
+        }
+
+        // down 1
+        if (index / 8) >= 1 {
+            gen_halfmove(-10, index, position, &mut moves);
+        }
+    }
+
+    return moves;
+}
+
+fn gen_halfmove(offset: i8, index: u8, position: &Position, moves: &mut Vec<HalfMove>) {
+
+    if let Some(piece) = position.board[(index + offset as u8) as usize ] {
+        if piece.get_color() == position.move_next {
+            return;
+        }
+    }
+
+    moves.push(HalfMove{from: index, to: (index + offset as u8), flag: None});
+
+}
+
+fn gen_white_pawn_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
+    let mut moves: Vec<HalfMove> = Vec::new();
+
+    let board = position.board;
+    let piece = board[index as usize].unwrap();
     let color = piece.get_color();
 
     // straight move
-    if  board[(piece_index + 8) as usize] == None {
+    if  board[(index + 8) as usize] == None {
         // nothing in the way
-        if (piece_index / 8) != 6 {
-            moves.push(HalfMove{from: piece_index, to: (piece_index + 8), flag: None});
-            if (piece_index / 8 == 1) && board[(piece_index + 16) as usize] == None {
-                moves.push(HalfMove{from: piece_index, to: (piece_index + 16), flag: Some(HalfmoveFlag::DoublePawnMove)});
+        if (index / 8) != 6 {
+            moves.push(HalfMove{from: index, to: (index + 8), flag: None});
+            if (index / 8 == 1) && board[(index + 16) as usize] == None {
+                moves.push(HalfMove{from: index, to: (index + 16), flag: Some(HalfmoveFlag::DoublePawnMove)});
             }
         } else {
             // promotion
-            moves.push(HalfMove{from: piece_index, to: (piece_index + 8), flag: Some(HalfmoveFlag::KnightPromotion)});
-            moves.push(HalfMove{from: piece_index, to: (piece_index + 8), flag: Some(HalfmoveFlag::BishopPromotion)});
-            moves.push(HalfMove{from: piece_index, to: (piece_index + 8), flag: Some(HalfmoveFlag::RookPromotion)});
-            moves.push(HalfMove{from: piece_index, to: (piece_index + 8), flag: Some(HalfmoveFlag::QueenPromotion)});
+            moves.push(HalfMove{from: index, to: (index + 8), flag: Some(HalfmoveFlag::KnightPromotion)});
+            moves.push(HalfMove{from: index, to: (index + 8), flag: Some(HalfmoveFlag::BishopPromotion)});
+            moves.push(HalfMove{from: index, to: (index + 8), flag: Some(HalfmoveFlag::RookPromotion)});
+            moves.push(HalfMove{from: index, to: (index + 8), flag: Some(HalfmoveFlag::QueenPromotion)});
         }
     }
 
     // captures
-    if (piece_index % 8) != 0 {
+    if (index % 8) != 0 {
         // left capture
-        if let Some(target) = board[(piece_index + 7) as usize] {
+        if let Some(target) = board[(index + 7) as usize] {
             if target.get_color() != color {
-                moves.push(HalfMove { from: piece_index, to: (piece_index + 7), flag: None });
+                moves.push(HalfMove { from: index, to: (index + 7), flag: None });
             }
         } else if let Some(target) =  position.en_passant_target {
             // en passant
-            if piece_index + 7 == target {
-                moves.push(HalfMove { from: piece_index, to: (piece_index + 7), flag: Some(HalfmoveFlag::EnPassant)});
+            if index + 7 == target {
+                moves.push(HalfMove { from: index, to: (index + 7), flag: Some(HalfmoveFlag::EnPassant)});
             }
         }
     }
-    if (piece_index % 8) != 7 {
+    if (index % 8) != 7 {
         // right capture
-        if let Some(target) = board[(piece_index + 9) as usize] {
+        if let Some(target) = board[(index + 9) as usize] {
             if target.get_color() != color {
-                moves.push(HalfMove { from: piece_index, to: (piece_index + 9), flag: None });
+                moves.push(HalfMove { from: index, to: (index + 9), flag: None });
             }
         } else if let Some(target) =  position.en_passant_target {
             // en passant
-            if piece_index + 9 == target {
-                moves.push(HalfMove { from: piece_index, to: (piece_index + 9), flag: Some(HalfmoveFlag::EnPassant)});
+            if index + 9 == target {
+                moves.push(HalfMove { from: index, to: (index + 9), flag: Some(HalfmoveFlag::EnPassant)});
             }
         }
     }
@@ -1067,54 +1144,54 @@ fn gen_white_pawn_pseudolegal_moves(piece_index: u8, position: &Position) -> Vec
     return moves;
 }
 
-fn gen_black_pawn_pseudolegal_moves(piece_index: u8, position: &Position) -> Vec<HalfMove> {
+fn gen_black_pawn_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
     let mut moves: Vec<HalfMove> = Vec::new();
 
     let board = position.board;
-    let piece = board[piece_index as usize].unwrap();
+    let piece = board[index as usize].unwrap();
     let color = piece.get_color();
 
     // straight move
-    if  board[(piece_index - 8) as usize] == None {
+    if  board[(index - 8) as usize] == None {
         // nothing in the way
-        if (piece_index / 8) != 1 {
-            moves.push(HalfMove{from: piece_index, to: (piece_index - 8), flag: None});
-            if (piece_index / 8 == 7) && board[(piece_index - 16) as usize] == None {
-                moves.push(HalfMove{from: piece_index, to: (piece_index - 16), flag: Some(HalfmoveFlag::DoublePawnMove)});
+        if (index / 8) != 1 {
+            moves.push(HalfMove{from: index, to: (index - 8), flag: None});
+            if (index / 8 == 7) && board[(index - 16) as usize] == None {
+                moves.push(HalfMove{from: index, to: (index - 16), flag: Some(HalfmoveFlag::DoublePawnMove)});
             }
         } else {
             // promotion
-            moves.push(HalfMove{from: piece_index, to: (piece_index - 8), flag: Some(HalfmoveFlag::KnightPromotion)});
-            moves.push(HalfMove{from: piece_index, to: (piece_index - 8), flag: Some(HalfmoveFlag::BishopPromotion)});
-            moves.push(HalfMove{from: piece_index, to: (piece_index - 8), flag: Some(HalfmoveFlag::RookPromotion)});
-            moves.push(HalfMove{from: piece_index, to: (piece_index - 8), flag: Some(HalfmoveFlag::QueenPromotion)});
+            moves.push(HalfMove{from: index, to: (index - 8), flag: Some(HalfmoveFlag::KnightPromotion)});
+            moves.push(HalfMove{from: index, to: (index - 8), flag: Some(HalfmoveFlag::BishopPromotion)});
+            moves.push(HalfMove{from: index, to: (index - 8), flag: Some(HalfmoveFlag::RookPromotion)});
+            moves.push(HalfMove{from: index, to: (index - 8), flag: Some(HalfmoveFlag::QueenPromotion)});
         }
     }
 
     // captures (left/right orientation with white as bottom)
-    if (piece_index % 8) != 0 {
+    if (index % 8) != 0 {
         // left capture
-        if let Some(target) = board[(piece_index - 9) as usize] {
+        if let Some(target) = board[(index - 9) as usize] {
             if target.get_color() != color {
-                moves.push(HalfMove { from: piece_index, to: (piece_index - 9), flag: None });
+                moves.push(HalfMove { from: index, to: (index - 9), flag: None });
             }
         } else if let Some(target) =  position.en_passant_target {
             // en passant
-            if piece_index - 9 == target {
-                moves.push(HalfMove { from: piece_index, to: (piece_index - 9), flag: Some(HalfmoveFlag::EnPassant)});
+            if index - 9 == target {
+                moves.push(HalfMove { from: index, to: (index - 9), flag: Some(HalfmoveFlag::EnPassant)});
             }
         }
     }
-    if (piece_index % 8) != 7 {
+    if (index % 8) != 7 {
         // right capture
-        if let Some(target) = board[(piece_index - 7) as usize] {
+        if let Some(target) = board[(index - 7) as usize] {
             if target.get_color() != color {
-                moves.push(HalfMove { from: piece_index, to: (piece_index - 7), flag: None });
+                moves.push(HalfMove { from: index, to: (index - 7), flag: None });
             }
         } else if let Some(target) =  position.en_passant_target {
             // en passant
-            if piece_index - 7 == target {
-                moves.push(HalfMove { from: piece_index, to: (piece_index - 7), flag: Some(HalfmoveFlag::EnPassant)});
+            if index - 7 == target {
+                moves.push(HalfMove { from: index, to: (index - 7), flag: Some(HalfmoveFlag::EnPassant)});
             }
         }
     }
