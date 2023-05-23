@@ -1079,13 +1079,13 @@ fn gen_knight_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove>
 
 fn gen_halfmove(offset: i8, index: u8, position: &Position, moves: &mut Vec<HalfMove>) {
 
-    if let Some(piece) = position.board[(index + offset as u8) as usize ] {
+    if let Some(piece) = position.board[(index as i8 + offset) as usize ] {
         if piece.get_color() == position.move_next {
             return;
         }
     }
 
-    moves.push(HalfMove{from: index, to: (index + offset as u8), flag: None});
+    moves.push(HalfMove{from: index, to: (index as i8 + offset) as u8, flag: None});
 
 }
 
