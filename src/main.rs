@@ -108,11 +108,13 @@ struct HalfMove {
     flag: Option<HalfmoveFlag>,
 }
 
+#[derive(Clone)]
 struct ColorCastlingRights {
     kingside: bool,
     queenside: bool,
 }
 
+#[derive(Clone)]
 struct PieceSet {
     all: HashSet<u8>,
     white: HashSet<u8>,
@@ -152,12 +154,13 @@ impl PieceSet {
         }
     }
 }
-
+#[derive(Clone)]
 struct CastlingRights {
     black: ColorCastlingRights,
     white: ColorCastlingRights,
 }
 
+#[derive(Clone)]
 struct Position {
     board: [Option<Piece>; 64],
     piece_set: PieceSet,
@@ -267,6 +270,8 @@ fn main() {
 
 
     handle_command(position_cmd.to_string(), &shared_flags);
+
+    print_index_reference();
 
 
 
@@ -900,7 +905,7 @@ fn print_board(shared_flags: &Arc<Mutex<SharedFlags>>) {
     }
 }
 
-fn print_index_reference(shared_flags: &Arc<Mutex<SharedFlags>>) {
+fn print_index_reference() {
     let mut index:usize = 72;
 
     for _i in 0..8  {
@@ -955,7 +960,7 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
 
 }
 
-fn gen_pseudolegal_moves(color: Color, shared_flags: &Arc<Mutex<SharedFlags>>) -> Vec<HalfMove> {
+fn gen_color_pseudolegal_moves(color: Color, shared_flags: &Arc<Mutex<SharedFlags>>) -> Vec<HalfMove> {
 
     let piece_set: HashSet<u8>;
 
@@ -970,11 +975,134 @@ fn gen_pseudolegal_moves(color: Color, shared_flags: &Arc<Mutex<SharedFlags>>) -
     for i in piece_set {
         // gen pseudolegal moves for each piece at index i
         // add each move to moves vector
+        moves.extend(gen_piece_pseudolegal_moves(i, shared_flags));
 
         // no need to gen new threads here, will likely be suboptimal.
         // Our tree will exponentially grow so fast itd be pointless to do it here.
 
         // just a thought, if we make the eval properly, do we even need to check for legality?
+    }
+
+    return moves;
+}
+
+fn gen_piece_pseudolegal_moves(piece_index: u8, shared_flags: &Arc<Mutex<SharedFlags>>) -> Vec<HalfMove> {
+
+    let board = shared_flags.lock().unwrap().position.board.clone();
+
+    let position = shared_flags.lock().unwrap().position.clone();
+
+    let piece = board[piece_index as usize].unwrap();
+
+    /*
+    let piece_option = board[piece_index as usize];
+
+    if piece_option == None {
+        println!("Error! piece_set was somehow not updated properly, attempted to access empty space!");
+        return Vec::new();
+    }
+
+    let piece = piece_option.unwrap();
+     */
+
+    let mut moves: Vec<HalfMove> = Vec::new();
+
+    let color = piece.get_color();
+
+    if piece.is_pawn() {
+        if piece.is_white() {
+            // straight move
+            if  board[(piece_index + 8) as usize] == None {
+                // nothing in the way
+                if (piece_index / 8) != 6 {
+                    moves.push(HalfMove{from: piece_index, to: (piece_index + 8), flag: None});
+                    if (piece_index / 8 == 1) && board[(piece_index + 16) as usize] == None {
+                        moves.push(HalfMove{from: piece_index, to: (piece_index + 16), flag: Some(HalfmoveFlag::DoublePawnMove)});
+                    }
+                } else {
+                    // promotion
+                    moves.push(HalfMove{from: piece_index, to: (piece_index + 8), flag: Some(HalfmoveFlag::KnightPromotion)});
+                    moves.push(HalfMove{from: piece_index, to: (piece_index + 8), flag: Some(HalfmoveFlag::BishopPromotion)});
+                    moves.push(HalfMove{from: piece_index, to: (piece_index + 8), flag: Some(HalfmoveFlag::RookPromotion)});
+                    moves.push(HalfMove{from: piece_index, to: (piece_index + 8), flag: Some(HalfmoveFlag::QueenPromotion)});
+                }
+            }
+
+            // captures
+            if (piece_index % 8) != 0 {
+                // left capture
+                if let Some(target) = board[(piece_index + 7) as usize] {
+                    if target.get_color() != color {
+                        moves.push(HalfMove { from: piece_index, to: (piece_index + 7), flag: None });
+                    }
+                } else if let Some(target) =  position.en_passant_target {
+                    // en passant
+                    if piece_index + 7 == target {
+                        moves.push(HalfMove { from: piece_index, to: (piece_index + 7), flag: Some(HalfmoveFlag::EnPassant)});
+                    }
+                }
+            }
+            if (piece_index % 8) != 7 {
+                // right capture
+                if let Some(target) = board[(piece_index + 9) as usize] {
+                    if target.get_color() != color {
+                        moves.push(HalfMove { from: piece_index, to: (piece_index + 9), flag: None });
+                    }
+                } else if let Some(target) =  position.en_passant_target {
+                    // en passant
+                    if piece_index + 9 == target {
+                        moves.push(HalfMove { from: piece_index, to: (piece_index + 9), flag: Some(HalfmoveFlag::EnPassant)});
+                    }
+                }
+            }
+
+        } else { // black
+            // straight move
+            if  board[(piece_index - 8) as usize] == None {
+                // nothing in the way
+                if (piece_index / 8) != 1 {
+                    moves.push(HalfMove{from: piece_index, to: (piece_index - 8), flag: None});
+                    if (piece_index / 8 == 7) && board[(piece_index - 16) as usize] == None {
+                        moves.push(HalfMove{from: piece_index, to: (piece_index - 16), flag: Some(HalfmoveFlag::DoublePawnMove)});
+                    }
+                } else {
+                    // promotion
+                    moves.push(HalfMove{from: piece_index, to: (piece_index - 8), flag: Some(HalfmoveFlag::KnightPromotion)});
+                    moves.push(HalfMove{from: piece_index, to: (piece_index - 8), flag: Some(HalfmoveFlag::BishopPromotion)});
+                    moves.push(HalfMove{from: piece_index, to: (piece_index - 8), flag: Some(HalfmoveFlag::RookPromotion)});
+                    moves.push(HalfMove{from: piece_index, to: (piece_index - 8), flag: Some(HalfmoveFlag::QueenPromotion)});
+                }
+            }
+
+            // captures (left/right orientation with white as bottom)
+            if (piece_index % 8) != 0 {
+                // left capture
+                if let Some(target) = board[(piece_index - 9) as usize] {
+                    if target.get_color() != color {
+                        moves.push(HalfMove { from: piece_index, to: (piece_index - 9), flag: None });
+                    }
+                } else if let Some(target) =  position.en_passant_target {
+                    // en passant
+                    if piece_index - 9 == target {
+                        moves.push(HalfMove { from: piece_index, to: (piece_index - 9), flag: Some(HalfmoveFlag::EnPassant)});
+                    }
+                }
+            }
+            if (piece_index % 8) != 7 {
+                // right capture
+                if let Some(target) = board[(piece_index - 7) as usize] {
+                    if target.get_color() != color {
+                        moves.push(HalfMove { from: piece_index, to: (piece_index - 7), flag: None });
+                    }
+                } else if let Some(target) =  position.en_passant_target {
+                    // en passant
+                    if piece_index - 7 == target {
+                        moves.push(HalfMove { from: piece_index, to: (piece_index - 7), flag: Some(HalfmoveFlag::EnPassant)});
+                    }
+                }
+            }
+
+        }
     }
 
     return moves;
