@@ -251,13 +251,19 @@ fn main() {
     handle_command("debug on".to_string(), &shared_flags);
 
     // general FEN loading
-    //let position_cmd = "position fen 8/8/4k3/1p2p2p/PPpn3P/2N4r/5K2/2R5 b - - 2 53 moves Nd4b3";
+    let position_cmd = "position fen 8/8/4k3/1p2p2p/PPpn3P/2N4r/5K2/2R5 b - - 2 53 moves Nd4b3";
 
     // general moving around
-    let position_cmd = "position startpos moves e2e4 e7e5 Ng1f3 Nb8c6 Bf1b5 a7a6 Bb5xc6 d7xc6 e1h1 f7f6 d2d4";
+    //let position_cmd = "position startpos moves e2e4 e7e5 Ng1f3 Nb8c6 Bf1b5 a7a6 Bb5xc6 d7xc6 e1h1 f7f6 d2d4";
 
     // en passant
-    //let position_cmd = "position startpos moves d2d4 h7h6 d4d5 e7e5 d5xe6";
+    //let position_cmd = "position fen k7/4p2p/8/8/8/8/3P4/K7 w - - 0 1 moves d2d4 h7h6 d4d5 e7e5 d5xe6";
+
+    // en passant -1
+    // let position_cmd = "position fen k7/4p2p/8/8/8/8/3P4/K7 w - - 0 1 moves d2d4 h7h6 d4d5 e7e5";
+
+    // en passant -1 lose flag
+    // let position_cmd = "position fen k7/4p2p/8/8/8/8/3P4/K7 w - - 0 1 moves d2d4 e7e5 d4d5 h7h6";
 
     // castling kingside
     //let position_cmd = "position startpos moves g2g3 Ng8f6 Ng1f3 Nf6g8 Bf1g2 Ng8f6 e1h1 g7g6 Nf3e1 Bf8g7 Ne1f3 e8h8";
@@ -271,7 +277,7 @@ fn main() {
 
     handle_command(position_cmd.to_string(), &shared_flags);
 
-    print_index_reference();
+    // print_index_reference();
 
 
 
@@ -338,6 +344,8 @@ fn parse_command(shared_flags: &Arc<Mutex<SharedFlags>>, mut command: &mut Split
         "stop" => stop_command(shared_flags),
         "ponderhit" => ponderhit_command(shared_flags),
         "quit" => quit_command(shared_flags),
+        // todo: remove ref command
+        "ref" => print_index_reference(),
         _ => println!("Error - Unknown command!")
     }
 }
@@ -958,7 +966,8 @@ fn handle_fen_digit(index: &mut usize, char: char) {
 
 fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlags>>) {
     let position = shared_flags.lock().unwrap().position.clone();
-    println!("{:?}", gen_color_pseudolegal_moves(Color::White, &position));
+    let color = position.move_next;
+    println!("{:?}", gen_color_pseudolegal_moves(color, &position));
 }
 
 fn gen_color_pseudolegal_moves(color: Color, position: &Position) -> Vec<HalfMove> {
