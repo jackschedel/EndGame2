@@ -1,6 +1,6 @@
 use std::io::{self, BufRead};
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::{fmt, thread};
 use std::str::SplitWhitespace;
 use hashbrown::HashSet;
 
@@ -101,12 +101,25 @@ impl Piece {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 struct HalfMove {
     from: u8,
     to: u8,
     flag: Option<HalfmoveFlag>,
 }
+impl fmt::Debug for HalfMove {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Customize the output of Debug for YourObject
+
+        if self.flag == None {
+            return write!(f, "[{} {}]", int_to_coord(self.from), int_to_coord(self.to));
+        } else {
+            return write!(f, "[{:?} {} {}]", self.flag, int_to_coord(self.from), int_to_coord(self.to));
+        }
+
+    }
+}
+
 
 #[derive(Clone)]
 struct ColorCastlingRights {
@@ -903,7 +916,7 @@ fn print_board(shared_flags: &Arc<Mutex<SharedFlags>>) {
 
     for _i in 0..8  {
         index -= 16;
-        print!("{}{}", column_num, horiz_space);
+        print!("{} {}", column_num, horiz_space);
         column_num -= 1;
         for _j in 0..8  {
             let use_symbols = shared_flags.lock().unwrap().options.debug_use_symbols;
@@ -914,7 +927,8 @@ fn print_board(shared_flags: &Arc<Mutex<SharedFlags>>) {
         }
         println!();
     }
-    println!(" {}A{}B{}C{}D{}E{}F{}G{}H", horiz_space, horiz_space, horiz_space, horiz_space, horiz_space, horiz_space, horiz_space, horiz_space);
+    println!();
+    println!("  {}A{}B{}C{}D{}E{}F{}G{}H", horiz_space, horiz_space, horiz_space, horiz_space, horiz_space, horiz_space, horiz_space, horiz_space);
 }
 
 fn print_index_reference() {
