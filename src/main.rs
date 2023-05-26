@@ -842,7 +842,28 @@ fn parse_castling_rights(shared_flags: &Arc<Mutex<SharedFlags>>, castling_rights
 
 fn set_board_from_fen(fen: &str, shared_flags: &Arc<Mutex<SharedFlags>>) {
 
-    shared_flags.lock().unwrap().position.board = [None; 64];
+    shared_flags.lock().unwrap().position = Position {
+        board: [None; 64],
+        piece_set: PieceSet {
+            all: HashSet::new(),
+            white: HashSet::new(),
+            black: HashSet::new(),
+        },
+        move_next: Color::White,
+        castling_rights: CastlingRights {
+            black: ColorCastlingRights {
+                kingside: true,
+                queenside: true,
+            },
+            white: ColorCastlingRights {
+                kingside: true,
+                queenside: true,
+            },
+        },
+        en_passant_target: None,
+        halfmove_clock: 0,
+        fullmove_number: 0,
+    };
 
     let mut index:usize = 56;
 
