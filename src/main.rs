@@ -230,7 +230,7 @@ fn main() {
         },
         options: EngineOptions {
             multi_pv: 1,
-            debug_indexes: true,
+            debug_indexes: false,
             debug_sets_display: false,
             debug_use_symbols: false,
         }
@@ -898,17 +898,23 @@ fn piece_to_char(piece: Option<Piece>, use_symbols: bool) -> char {
 fn print_board(shared_flags: &Arc<Mutex<SharedFlags>>) {
     let mut index:usize = 72;
 
+    let mut column_num: u8 = 8;
+    let horiz_space = "   ";
+
     for _i in 0..8  {
         index -= 16;
+        print!("{}{}", column_num, horiz_space);
+        column_num -= 1;
         for _j in 0..8  {
             let use_symbols = shared_flags.lock().unwrap().options.debug_use_symbols;
             let piece_char = piece_to_char(shared_flags.lock().unwrap().position.board[index], use_symbols);
 
-            print!("{}  ", piece_char);
+            print!("{}{}", piece_char, horiz_space);
             index += 1;
         }
         println!();
     }
+    println!(" {}A{}B{}C{}D{}E{}F{}G{}H", horiz_space, horiz_space, horiz_space, horiz_space, horiz_space, horiz_space, horiz_space, horiz_space);
 }
 
 fn print_index_reference() {
