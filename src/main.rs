@@ -114,7 +114,7 @@ impl fmt::Debug for HalfMove {
         if self.flag == None {
             return write!(f, "[{} {}]", int_to_coord(self.from), int_to_coord(self.to));
         } else {
-            return write!(f, "[{:?} {} {}]", self.flag, int_to_coord(self.from), int_to_coord(self.to));
+            return write!(f, "[{:?} {} {}]", self.flag.as_ref().unwrap(), int_to_coord(self.from), int_to_coord(self.to));
         }
 
     }
@@ -394,8 +394,10 @@ fn parse_command(shared_flags: &Arc<Mutex<SharedFlags>>, mut command: &mut Split
         "stop" => stop_command(shared_flags),
         "ponderhit" => ponderhit_command(shared_flags),
         "quit" => quit_command(shared_flags),
-        // todo: remove ref command
+        // todo: remove following commands, or only enable in debug mode
         "ref" => print_index_reference(),
+        "print" => display_debug(shared_flags),
+        "moves" => handle_move_tokens(&mut command, shared_flags),
         _ => println!("Error - Unknown command!")
     }
 }
@@ -453,10 +455,13 @@ fn position_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Shar
         return;
     }
 
+    handle_move_tokens(command, shared_flags);
+}
+
+fn handle_move_tokens(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlags>>) {
     let mut move_token = command.next();
 
     while move_token != None {
-
         let parsed_move = string_to_halfmove(shared_flags, move_token.unwrap());
 
         if parsed_move == None {
@@ -1080,11 +1085,76 @@ fn gen_piece_pseudolegal_moves(piece_index: u8, position: &Position) -> Vec<Half
         Some(Piece::Pawn(Color::White)) => {return gen_white_pawn_pseudolegal_moves(piece_index, position)},
         Some(Piece::Pawn(Color::Black)) => {return gen_black_pawn_pseudolegal_moves(piece_index, position)},
         Some(Piece::Knight(_)) => {return gen_knight_pseudolegal_moves(piece_index, position)},
-        Some(_) => {},
+        Some(Piece::Rook(_)) => {return gen_rook_pseudolegal_moves(piece_index, position)},
+        Some(Piece::Bishop(_)) => {return gen_bishop_pseudolegal_moves(piece_index, position)},
+        Some(Piece::Queen(_)) => {return gen_queen_pseudolegal_moves(piece_index, position)},
+        Some(Piece::King(_)) => {return gen_king_pseudolegal_moves(piece_index, position)},
         None => panic!("Error, index contained in piece_set has no piece on board!")
     }
 
     return Vec::new();
+}
+
+fn gen_rook_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
+    let mut moves: Vec<HalfMove> = Vec::new();
+
+    gen_rook_moves(index, position, &mut moves);
+
+    // todo: castling
+
+    return moves;
+}
+
+fn gen_king_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
+    let mut moves: Vec<HalfMove> = Vec::new();
+
+    gen_halfmove_with_check(7, index, position, &mut moves);
+    gen_halfmove_with_check(8, index, position, &mut moves);
+    gen_halfmove_with_check(9, index, position, &mut moves);
+    gen_halfmove_with_check(1, index, position, &mut moves);
+    gen_halfmove_with_check(-7, index, position, &mut moves);
+    gen_halfmove_with_check(-8, index, position, &mut moves);
+    gen_halfmove_with_check(-9, index, position, &mut moves);
+    gen_halfmove_with_check(-1, index, position, &mut moves);
+
+    return moves;
+}
+
+fn gen_halfmove_with_check(offset: i8, index: u8, position: &Position, moves: &mut Vec<HalfMove>) {
+    if index as i8 + offset > 63 || index as i8 + offset < 0 {
+        return;
+    }
+
+    // rightward bound check
+    if offset % 8 == 1 && index % 8 == 7 {
+        return;
+    }
+
+    // leftward bound check
+    if offset % 8 == 7 && index % 8 == 0 {
+        return;
+    }
+
+    gen_halfmove(offset, index, position, moves);
+
+}
+
+fn gen_bishop_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
+    let mut moves: Vec<HalfMove> = Vec::new();
+
+    gen_bishop_moves(index, position, &mut moves);
+
+    return moves;
+}
+
+fn gen_queen_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
+    let mut moves: Vec<HalfMove> = Vec::new();
+
+    gen_rook_moves(index, position, &mut moves);
+
+    gen_bishop_moves(index, position, &mut moves);
+
+    return moves;
 }
 
 fn gen_knight_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
@@ -1151,15 +1221,170 @@ fn gen_knight_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove>
     return moves;
 }
 
-fn gen_halfmove(offset: i8, index: u8, position: &Position, moves: &mut Vec<HalfMove>) {
+fn gen_upwards(index: u8, position: &Position, moves: &mut Vec<HalfMove>) {
+    let dir_offset = 8;
+    let mut offset: i8 = dir_offset;
+
+    loop {
+        if index as i8 + offset > 63 {
+            break;
+        }
+
+        if !gen_halfmove(offset, index, position, moves) {
+            break;
+        }
+
+        offset += dir_offset;
+    }
+}
+
+fn gen_downwards(index: u8, position: &Position, moves: &mut Vec<HalfMove>) {
+    let dir_offset = -8;
+    let mut offset: i8 = dir_offset;
+
+    loop {
+        if index as i8 + offset < 0 {
+            break;
+        }
+
+        if !gen_halfmove(offset, index, position, moves) {
+            break;
+        }
+
+        offset += dir_offset;
+    }
+}
+
+fn gen_right(index: u8, position: &Position, moves: &mut Vec<HalfMove>) {
+    let dir_offset = 1;
+    let mut offset: i8 = dir_offset;
+
+    loop {
+        if (index as i8 + offset) % 8 == 0 || index as i8 + offset > 63{
+            break;
+        }
+
+        if !gen_halfmove(offset, index, position, moves) {
+            break;
+        }
+
+        offset += dir_offset;
+    }
+}
+
+fn gen_left(index: u8, position: &Position, moves: &mut Vec<HalfMove>) {
+    let dir_offset = -1;
+    let mut offset: i8 = dir_offset;
+
+    loop {
+        if (index as i8 + offset) % 8 == 7 || index as i8 + offset < 0{
+            break;
+        }
+
+        if !gen_halfmove(offset, index, position, moves) {
+            break;
+        }
+
+        offset += dir_offset;
+    }
+}
+
+fn gen_up_right(index: u8, position: &Position, moves: &mut Vec<HalfMove>) {
+    let dir_offset = 9;
+    let mut offset: i8 = dir_offset;
+
+    loop {
+        if index as i8 + offset > 63 || (index as i8 + offset) % 8 == 0{
+            break;
+        }
+
+        if !gen_halfmove(offset, index, position, moves) {
+            break;
+        }
+
+        offset += dir_offset;
+    }
+}
+
+fn gen_up_left(index: u8, position: &Position, moves: &mut Vec<HalfMove>) {
+    let dir_offset = 7;
+    let mut offset: i8 = dir_offset;
+
+    loop {
+        if index as i8 + offset > 63 || (index as i8 + offset) % 8 == 7{
+            break;
+        }
+
+        if !gen_halfmove(offset, index, position, moves) {
+            break;
+        }
+
+        offset += dir_offset;
+    }
+}
+
+fn gen_down_right(index: u8, position: &Position, moves: &mut Vec<HalfMove>) {
+    let dir_offset = -7;
+    let mut offset: i8 = dir_offset;
+
+    loop {
+        if index as i8 + offset < 0 || (index as i8 + offset) % 8 == 0{
+            break;
+        }
+
+        if !gen_halfmove(offset, index, position, moves) {
+            break;
+        }
+
+        offset += dir_offset;
+    }
+}
+
+fn gen_down_left(index: u8, position: &Position, moves: &mut Vec<HalfMove>) {
+    let dir_offset = -9;
+    let mut offset: i8 = dir_offset;
+
+    loop {
+        if index as i8 + offset < 0 || (index as i8 + offset) % 8 == 7{
+            break;
+        }
+
+        if !gen_halfmove(offset, index, position, moves) {
+            break;
+        }
+
+        offset += dir_offset;
+    }
+}
+
+fn gen_bishop_moves(index: u8, position: &Position, moves: &mut Vec<HalfMove>) {
+    gen_down_left(index, position, moves);
+    gen_down_right(index, position, moves);
+    gen_up_left(index, position, moves);
+    gen_up_right(index, position, moves);
+}
+
+fn gen_rook_moves(index: u8, position: &Position, moves: &mut Vec<HalfMove>) {
+    gen_downwards(index, position, moves);
+    gen_right(index, position, moves);
+    gen_upwards(index, position, moves);
+    gen_left(index, position, moves);
+}
+
+fn gen_halfmove(offset: i8, index: u8, position: &Position, moves: &mut Vec<HalfMove>) -> bool {
+
+    let mut to_return = true;
 
     if let Some(piece) = position.board[(index as i8 + offset) as usize ] {
         if piece.get_color() == position.move_next {
-            return;
+            return false;
         }
+        to_return = false;
     }
 
     moves.push(HalfMove{from: index, to: (index as i8 + offset) as u8, flag: None});
+
+    return to_return;
 
 }
 
