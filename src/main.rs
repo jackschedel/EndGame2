@@ -134,6 +134,43 @@ struct PieceSet {
     black: HashSet<u8>
 }
 
+impl fmt::Debug for PieceSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Customize the output of Debug for YourObject
+
+        let mut all_string = String::from("All:");
+        let mut sorted_all: Vec<u8> = self.all.iter().cloned().collect();
+        sorted_all.sort_unstable();
+
+        for i in sorted_all {
+            all_string += " ";
+            all_string += &int_to_coord(i);
+        }
+
+        let mut white_string = String::from("White:");
+        let mut sorted_white: Vec<u8> = self.white.iter().cloned().collect();
+        sorted_white.sort_unstable();
+
+        for i in sorted_white {
+            white_string += " ";
+            white_string += &int_to_coord(i);
+        }
+
+        let mut black_string = String::from("Black:");
+        let mut sorted_black: Vec<u8> = self.black.iter().cloned().collect();
+        sorted_black.sort_unstable();
+
+        for i in sorted_black {
+            black_string += " ";
+            black_string += &int_to_coord(i);
+        }
+
+
+        return write!(f, "{}\n{}\n{}", all_string, white_string, black_string);
+
+    }
+}
+
 impl PieceSet {
     fn remove_index(&mut self, index: u8, color: Color) {
         self.all.remove(&index);
@@ -244,7 +281,7 @@ fn main() {
         options: EngineOptions {
             multi_pv: 1,
             debug_indexes: false,
-            debug_sets_display: false,
+            debug_sets_display: true,
             debug_use_symbols: false,
         }
     }));
@@ -832,9 +869,7 @@ fn display_debug(shared_flags: &Arc<Mutex<SharedFlags>>) {
         }
 
         if shared_flags.lock().unwrap().options.debug_sets_display {
-            println!("All: {:?}", shared_flags.lock().unwrap().position.piece_set.all);
-            println!("White: {:?}", shared_flags.lock().unwrap().position.piece_set.white);
-            println!("Black: {:?}", shared_flags.lock().unwrap().position.piece_set.black);
+            println!("{:?}", shared_flags.lock().unwrap().position.piece_set);
         }
         println!();
         println!();
