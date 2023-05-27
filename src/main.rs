@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::{fmt, thread};
 use std::str::SplitWhitespace;
 use hashbrown::HashSet;
+use crate::HalfmoveFlag::Castle;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum Color {
@@ -301,7 +302,7 @@ fn main() {
     handle_command("debug on".to_string(), &shared_flags);
 
     // general FEN loading
-    let position_cmd = "position fen 8/8/4k3/1p2p2p/PPpn3P/2N4r/5K2/2R5 b - - 2 53 moves Nd4b3";
+    //let position_cmd = "position fen 8/8/4k3/1p2p2p/PPpn3P/2N4r/5K2/2R5 b - - 2 53 moves Nd4b3";
 
     // general moving around
     //let position_cmd = "position startpos moves e2e4 e7e5 Ng1f3 Nb8c6 Bf1b5 a7a6 Bb5xc6 d7xc6 e1h1 f7f6 d2d4";
@@ -320,6 +321,9 @@ fn main() {
 
     // castling queenside
     //let position_cmd = "position startpos moves e2e3 e7e6 Qd1e2 Qd8e7 d2d3 d7d6 Bc1d2 Bc8d7 Nb1c3 Nb8c6 e1a1 e8a8";
+
+    // castle setup
+    let position_cmd = "position fen r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1";
 
     // startpos+1
     //let position_cmd = "position startpos moves e2e3";
@@ -1074,6 +1078,36 @@ fn gen_color_pseudolegal_moves(color: Color, position: &Position) -> Vec<HalfMov
         // just a thought, if we make the eval properly, do we even need to check for legality?
     }
 
+    if color == Color::Black {
+        if position.castling_rights.black.kingside {
+            if position.board[63] == Some(Piece::Rook(Color::Black)) &&
+            position.board[62] == None && position.board[61] == None && position.board[60] == Some(Piece::King(Color::Black)) {
+                moves.push(HalfMove{from: 60, to: 63, flag: Some(Castle)});
+            }
+        }
+
+        if position.castling_rights.black.queenside {
+            if position.board[56] == Some(Piece::Rook(Color::Black)) &&
+                position.board[57] == None && position.board[58] == None && position.board[59] == None && position.board[60] == Some(Piece::King(Color::Black)) {
+                moves.push(HalfMove{from: 60, to: 56, flag: Some(Castle)});
+            }
+        }
+    } else {
+        if position.castling_rights.white.kingside {
+            if position.board[0] == Some(Piece::Rook(Color::White)) &&
+                position.board[1] == None && position.board[2] == None && position.board[3] == Some(Piece::King(Color::White)) {
+                moves.push(HalfMove{from: 3, to: 0, flag: Some(Castle)});
+            }
+        }
+
+        if position.castling_rights.white.queenside {
+            if position.board[7] == Some(Piece::Rook(Color::White)) &&
+                position.board[6] == None && position.board[5] == None && position.board[4] == None && position.board[3] == Some(Piece::King(Color::White)) {
+                moves.push(HalfMove{from: 3, to: 7, flag: Some(Castle)});
+            }
+        }
+    }
+
     return moves;
 }
 
@@ -1388,6 +1422,7 @@ fn gen_halfmove(offset: i8, index: u8, position: &Position, moves: &mut Vec<Half
 
 }
 
+// todo: rework en-passant to not check every pawn, implement like castling
 fn gen_white_pawn_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
     let mut moves: Vec<HalfMove> = Vec::new();
 
