@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex};
 use std::{fmt, thread};
 use std::str::SplitWhitespace;
 use hashbrown::HashSet;
-use crate::HalfmoveFlag::Castle;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum Color {
@@ -330,6 +329,8 @@ fn main() {
 
 
     handle_command(position_cmd.to_string(), &shared_flags);
+
+    handle_command("go".to_string(), &shared_flags);
 
     // print_index_reference();
 
@@ -1082,28 +1083,28 @@ fn gen_color_pseudolegal_moves(color: Color, position: &Position) -> Vec<HalfMov
         if position.castling_rights.black.kingside {
             if position.board[63] == Some(Piece::Rook(Color::Black)) &&
             position.board[62] == None && position.board[61] == None && position.board[60] == Some(Piece::King(Color::Black)) {
-                moves.push(HalfMove{from: 60, to: 63, flag: Some(Castle)});
+                moves.push(HalfMove{from: 60, to: 63, flag: Some(HalfmoveFlag::Castle)});
             }
         }
 
         if position.castling_rights.black.queenside {
             if position.board[56] == Some(Piece::Rook(Color::Black)) &&
                 position.board[57] == None && position.board[58] == None && position.board[59] == None && position.board[60] == Some(Piece::King(Color::Black)) {
-                moves.push(HalfMove{from: 60, to: 56, flag: Some(Castle)});
+                moves.push(HalfMove{from: 60, to: 56, flag: Some(HalfmoveFlag::Castle)});
             }
         }
     } else {
-        if position.castling_rights.white.kingside {
+        if position.castling_rights.white.queenside {
             if position.board[0] == Some(Piece::Rook(Color::White)) &&
-                position.board[1] == None && position.board[2] == None && position.board[3] == Some(Piece::King(Color::White)) {
-                moves.push(HalfMove{from: 3, to: 0, flag: Some(Castle)});
+                position.board[1] == None && position.board[2] == None && position.board[3] == None && position.board[4] == Some(Piece::King(Color::White)) {
+                moves.push(HalfMove{from: 4, to: 0, flag: Some(HalfmoveFlag::Castle)});
             }
         }
 
         if position.castling_rights.white.queenside {
             if position.board[7] == Some(Piece::Rook(Color::White)) &&
-                position.board[6] == None && position.board[5] == None && position.board[4] == None && position.board[3] == Some(Piece::King(Color::White)) {
-                moves.push(HalfMove{from: 3, to: 7, flag: Some(Castle)});
+                position.board[6] == None && position.board[5] == None && position.board[4] == Some(Piece::King(Color::White)) {
+                moves.push(HalfMove{from: 4, to: 7, flag: Some(HalfmoveFlag::Castle)});
             }
         }
     }
@@ -1133,8 +1134,6 @@ fn gen_rook_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
     let mut moves: Vec<HalfMove> = Vec::new();
 
     gen_rook_moves(index, position, &mut moves);
-
-    // todo: castling
 
     return moves;
 }
