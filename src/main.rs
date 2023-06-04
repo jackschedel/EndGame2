@@ -1,7 +1,6 @@
 use std::io::{self, BufRead};
 use std::sync::{Arc, Mutex};
 use std::{fmt, thread};
-use std::fmt::format;
 use std::str::SplitWhitespace;
 use hashbrown::HashSet;
 
@@ -220,6 +219,45 @@ impl PositionTree {
             nodes: vec![PositionTreeNode::root_node(position)],
         }
     }
+
+    fn gen_children(&mut self, index: usize) {
+        let positions = gen_possible_positions(&self.nodes[index].position);
+
+        for i in positions.into_iter() {
+            let child_node = PositionTreeNode {
+                parent: index,
+                position: i,
+                children: Vec::new(),
+            };
+            let curr_size = self.nodes.len();
+            self.nodes[index].children.push(curr_size);
+            self.nodes.push(child_node);
+        }
+    }
+
+    fn increase_depth(&mut self) -> usize {
+
+        if self.nodes.len() == 0 {
+            return 0;
+        }
+
+        if self.nodes.len() == 1 {
+            self.gen_children(0);
+            return self.nodes.len() - 1;
+        }
+
+        let prev_len = self.nodes.len();
+
+        let oldest_ungenned: usize = self.nodes.last().unwrap().parent + 1;
+
+        for i in oldest_ungenned..self.nodes.len() {
+            self.gen_children(i);
+        }
+
+        return self.nodes.len() - prev_len;
+
+
+    }
 }
 
 #[derive(Clone)]
@@ -246,18 +284,13 @@ impl fmt::Debug for PositionTree {
 
         let mut to_print = String::new();
 
-        to_print += &format!("Nodes: ");
+        to_print += &format!("PositionTree:");
 
         to_print += &format!("\n {} - (root), children: {:?}", 0, self.nodes[0].children);
+        to_print += &format!("\n{}", self.nodes[0].position.to_fen());
 
-        for i in (1..self.nodes.len()) {
+        for i in 1..self.nodes.len() {
             to_print += &format!("\n {} - {:?}", i, self.nodes[i]);
-        }
-
-        to_print += &format!("\n\nPositions: ");
-
-        for i in (0..self.nodes.len()) {
-            to_print += &format!("\n {}:", i);
             to_print += &format!("\n{}", self.nodes[i].position.to_fen());
         }
 
@@ -274,29 +307,6 @@ impl fmt::Debug for PositionTreeNode {
 
         return write!(f, "{}", to_print);
     }
-}
-
-impl PositionTree {
-
-    fn gen_children(&mut self, index: usize) {
-        let positions = gen_possible_positions(&self.nodes[index].position);
-
-        let mut children_data: Vec<(usize, PositionTreeNode)> = Vec::new();
-        for i in positions.into_iter() {
-            let child_node = PositionTreeNode {
-                parent: index,
-                position: i,
-                children: Vec::new(),
-            };
-            children_data.push((self.nodes.len(), child_node));
-        }
-
-        for (child_index, child_node) in children_data {
-            self.nodes[index].children.push(child_index);
-            self.nodes.push(child_node);
-        }
-    }
-
 }
 
 #[derive(Clone)]
@@ -486,7 +496,7 @@ fn main() {
         options: EngineOptions {
             multi_pv: 1,
             debug_indexes: false,
-            debug_sets_display: true,
+            debug_sets_display: false,
             debug_use_symbols: false,
         }
     }));
@@ -529,11 +539,15 @@ fn main() {
     // castle setup
     // let position_cmd = "position fen r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1";
 
-    // check testing
-    let position_cmd = "position startpos moves d2d3 e7e6 Ke1d2 Qd8g5";
+    // legality/check testing
+    // let position_cmd = "position startpos moves d2d3 e7e6 Ke1d2 Qd8g5";
+
+    // startpos
+    //let position_cmd = "position startpos";
+
 
     // startpos+1
-    //let position_cmd = "position startpos moves e2e3";
+    let position_cmd = "position startpos moves e2e3";
 
 
     handle_command(position_cmd.to_string(), &shared_flags);
@@ -1294,16 +1308,18 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
     let position = shared_flags.lock().unwrap().position.clone();
     let color = position.move_next;
 
-    // println!("{:?}", gen_color_pseudolegal_moves(position.move_next, &position));
-    //println!("{:?}", gen_legal_moves(&position));
-
     gen_position_tree(position);
 }
 
 fn gen_position_tree(position: Position) {
     let mut tree = PositionTree::from_pos(position);
 
-    println!("{:?}", tree);
+    for i in 1..3 {
+        let possible_moves = tree.increase_depth();
+
+        println!("\nDepth {}: {} positions", i, possible_moves);
+        // println!("{:?}", tree);
+    }
 
 }
 
@@ -1312,8 +1328,8 @@ fn gen_legal_moves(position: &Position) -> Vec<HalfMove> {
     let mut moves: Vec<HalfMove> = Vec::new();
     let mut positions: Vec<Position> = Vec::new();
 
-    moves = gen_color_pseudolegal_moves(position.move_next, position);
-
+    moves = gen_pseudolegal_moves(position);
+    
     for i in moves.iter() {
         let mut position_copy = position.clone();
         execute_halfmove(&mut position_copy, *i);
@@ -1345,7 +1361,7 @@ fn gen_possible_positions(position: &Position) -> Vec<Position> {
     let mut moves: Vec<HalfMove> = Vec::new();
     let mut positions: Vec<Position> = Vec::new();
 
-    moves = gen_color_pseudolegal_moves(position.move_next, position);
+    moves = gen_pseudolegal_moves(position);
 
     for i in moves.iter() {
         let mut position_copy = position.clone();
@@ -1646,7 +1662,9 @@ fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool
     return false;
 }
 
-fn gen_color_pseudolegal_moves(color: Color, position: &Position) -> Vec<HalfMove> {
+fn gen_pseudolegal_moves(position: &Position) -> Vec<HalfMove> {
+
+    let color = position.move_next;
 
     let piece_set: HashSet<u8>;
 
@@ -2081,7 +2099,7 @@ fn gen_black_pawn_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfM
         // nothing in the way
         if (index / 8) != 1 {
             moves.push(HalfMove{from: index, to: (index - 8), flag: None});
-            if (index / 8 == 7) && board[(index - 16) as usize] == None {
+            if (index / 8 == 6) && board[(index - 16) as usize] == None {
                 moves.push(HalfMove{from: index, to: (index - 16), flag: Some(HalfmoveFlag::DoublePawnMove)});
             }
         } else {
