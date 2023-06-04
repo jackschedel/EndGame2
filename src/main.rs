@@ -473,21 +473,24 @@ fn handle_move_tokens(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Sh
             println!("Error - unparsable move - {}", move_token.unwrap());
             break;
         } else {
-            execute_halfmove(shared_flags, parsed_move.unwrap());
+            let mut position = shared_flags.lock().unwrap().position.clone();
+            execute_halfmove(&mut position, parsed_move.unwrap());
+            shared_flags.lock().unwrap().position = position;
+            display_debug(shared_flags);
         }
 
         move_token = command.next();
     }
 }
 
-fn execute_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, to_exec: HalfMove) {
+fn execute_halfmove(position: &mut Position, to_exec: HalfMove) {
     // no legality checks, assumes that to_exec is legal
 
-    shared_flags.lock().unwrap().position.halfmove_clock += 1;
+    position.halfmove_clock += 1;
 
     let piece: Piece;
 
-    let color = shared_flags.lock().unwrap().position.board[to_exec.from as usize].unwrap().get_color();
+    let color = position.board[to_exec.from as usize].unwrap().get_color();
 
     match to_exec.flag {
         Some(HalfmoveFlag::KnightPromotion) => {
@@ -503,87 +506,87 @@ fn execute_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, to_exec: HalfMove) {
             piece = Piece::Queen(color);
         },
         _ => {
-            piece = shared_flags.lock().unwrap().position.board[to_exec.from as usize].unwrap();
+            piece = position.board[to_exec.from as usize].unwrap();
         }
     }
 
     if to_exec.flag != Some(HalfmoveFlag::Castle) {
-        if shared_flags.lock().unwrap().position.board[to_exec.to as usize] != None ||
-            shared_flags.lock().unwrap().position.board[to_exec.from as usize].unwrap().is_pawn() {
-            shared_flags.lock().unwrap().position.halfmove_clock = 0;
+        if position.board[to_exec.to as usize] != None ||
+            position.board[to_exec.from as usize].unwrap().is_pawn() {
+            position.halfmove_clock = 0;
         }
 
-        shared_flags.lock().unwrap().position.board[to_exec.to as usize] = Some(piece);
-        shared_flags.lock().unwrap().position.piece_set.add_index_or_color_swap(to_exec.to, color);
+        position.board[to_exec.to as usize] = Some(piece);
+        position.piece_set.add_index_or_color_swap(to_exec.to, color);
 
         if piece == Piece::King(Color::White){
-            shared_flags.lock().unwrap().position.castling_rights.white.kingside = false;
-            shared_flags.lock().unwrap().position.castling_rights.white.queenside = false;
+            position.castling_rights.white.kingside = false;
+            position.castling_rights.white.queenside = false;
         } else if piece == Piece::King(Color::Black){
-            shared_flags.lock().unwrap().position.castling_rights.black.kingside = false;
-            shared_flags.lock().unwrap().position.castling_rights.black.queenside = false;
+            position.castling_rights.black.kingside = false;
+            position.castling_rights.black.queenside = false;
         } else if piece == Piece::Rook(Color::White){
             if to_exec.from == 0 {
-                shared_flags.lock().unwrap().position.castling_rights.white.queenside = false;
+                position.castling_rights.white.queenside = false;
             } else if to_exec.from == 7 {
-                shared_flags.lock().unwrap().position.castling_rights.white.kingside = false;
+                position.castling_rights.white.kingside = false;
             }
         } else if piece == Piece::Rook(Color::Black){
             if to_exec.from == 56 {
-                shared_flags.lock().unwrap().position.castling_rights.black.queenside = false;
+                position.castling_rights.black.queenside = false;
             } else if to_exec.from == 63 {
-                shared_flags.lock().unwrap().position.castling_rights.black.kingside = false;
+                position.castling_rights.black.kingside = false;
             }
         }
     } else {
-        shared_flags.lock().unwrap().position.board[to_exec.to as usize] = None;
-        shared_flags.lock().unwrap().position.piece_set.remove_index(to_exec.to, color);
+        position.board[to_exec.to as usize] = None;
+        position.piece_set.remove_index(to_exec.to, color);
         if color == Color::White {
             if to_exec.to == 0 {
-                shared_flags.lock().unwrap().position.board[2] = Some(Piece::King(color));
-                shared_flags.lock().unwrap().position.piece_set.add_index(2, color);
+                position.board[2] = Some(Piece::King(color));
+                position.piece_set.add_index(2, color);
 
-                shared_flags.lock().unwrap().position.board[3] = Some(Piece::Rook(color));
-                shared_flags.lock().unwrap().position.piece_set.add_index(3, color);
+                position.board[3] = Some(Piece::Rook(color));
+                position.piece_set.add_index(3, color);
             } else {
                 // to_exec.to = 7
-                shared_flags.lock().unwrap().position.board[6] = Some(Piece::King(color));
-                shared_flags.lock().unwrap().position.piece_set.add_index(6, color);
+                position.board[6] = Some(Piece::King(color));
+                position.piece_set.add_index(6, color);
 
-                shared_flags.lock().unwrap().position.board[5] = Some(Piece::Rook(color));
-                shared_flags.lock().unwrap().position.piece_set.add_index(5, color);
+                position.board[5] = Some(Piece::Rook(color));
+                position.piece_set.add_index(5, color);
 
             }
 
-            shared_flags.lock().unwrap().position.castling_rights.white.kingside = false;
-            shared_flags.lock().unwrap().position.castling_rights.white.queenside = false;
+            position.castling_rights.white.kingside = false;
+            position.castling_rights.white.queenside = false;
         } else {
             if to_exec.to == 56 {
-                shared_flags.lock().unwrap().position.board[58] = Some(Piece::King(color));
-                shared_flags.lock().unwrap().position.piece_set.add_index(58, color);
+                position.board[58] = Some(Piece::King(color));
+                position.piece_set.add_index(58, color);
 
-                shared_flags.lock().unwrap().position.board[59] = Some(Piece::Rook(color));
-                shared_flags.lock().unwrap().position.piece_set.add_index(59, color);
+                position.board[59] = Some(Piece::Rook(color));
+                position.piece_set.add_index(59, color);
             } else {
                 // to_exec.to = 63
-                shared_flags.lock().unwrap().position.board[62] = Some(Piece::King(color));
-                shared_flags.lock().unwrap().position.piece_set.add_index(62, color);
+                position.board[62] = Some(Piece::King(color));
+                position.piece_set.add_index(62, color);
 
-                shared_flags.lock().unwrap().position.board[61] = Some(Piece::Rook(color));
-                shared_flags.lock().unwrap().position.piece_set.add_index(61, color);
+                position.board[61] = Some(Piece::Rook(color));
+                position.piece_set.add_index(61, color);
 
             }
 
-            shared_flags.lock().unwrap().position.castling_rights.black.kingside = false;
-            shared_flags.lock().unwrap().position.castling_rights.black.queenside = false;
+            position.castling_rights.black.kingside = false;
+            position.castling_rights.black.queenside = false;
         }
     }
 
-    shared_flags.lock().unwrap().position.board[to_exec.from as usize] = None;
-    shared_flags.lock().unwrap().position.piece_set.remove_index(to_exec.from, color);
+    position.board[to_exec.from as usize] = None;
+    position.piece_set.remove_index(to_exec.from, color);
 
     if to_exec.flag == Some(HalfmoveFlag::EnPassant) {
-        let mut target = shared_flags.lock().unwrap().position.en_passant_target.unwrap();
+        let mut target = position.en_passant_target.unwrap();
 
         if (target / 8) == 5 {
             target -= 8;
@@ -591,8 +594,8 @@ fn execute_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, to_exec: HalfMove) {
             target += 8;
         }
 
-        shared_flags.lock().unwrap().position.board[target as usize] = None;
-        shared_flags.lock().unwrap().position.piece_set.remove_index(target, color.opposite());
+        position.board[target as usize] = None;
+        position.piece_set.remove_index(target, color.opposite());
     }
 
     if to_exec.flag == Some(HalfmoveFlag::DoublePawnMove) {
@@ -604,20 +607,17 @@ fn execute_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, to_exec: HalfMove) {
             middle_space = to_exec.from + 8;
         }
 
-        shared_flags.lock().unwrap().position.en_passant_target = Some(middle_space);
+        position.en_passant_target = Some(middle_space);
     } else {
-        shared_flags.lock().unwrap().position.en_passant_target = None;
+        position.en_passant_target = None;
     }
 
-    if shared_flags.lock().unwrap().position.move_next == Color::Black {
-        shared_flags.lock().unwrap().position.fullmove_number += 1;
-        shared_flags.lock().unwrap().position.move_next = Color::White;
+    if position.move_next == Color::Black {
+        position.fullmove_number += 1;
+        position.move_next = Color::White;
     } else {
-        shared_flags.lock().unwrap().position.move_next = Color::Black;
+        position.move_next = Color::Black;
     }
-
-    display_debug(shared_flags);
-
 }
 
 fn string_to_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, move_string: &str) -> Option<HalfMove> {
