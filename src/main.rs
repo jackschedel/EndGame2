@@ -213,6 +213,13 @@ struct CastlingRights {
 }
 
 #[derive(Clone)]
+struct PositionTreeNode<'a> {
+    parent: Option<&'a PositionTreeNode<'a>>,
+    position: Position,
+    children: Vec<&'a PositionTreeNode<'a>>,
+}
+
+#[derive(Clone)]
 struct Position {
     board: [Option<Piece>; 64],
     piece_set: PieceSet,
@@ -1097,6 +1104,8 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
     println!("{:?}", gen_legal_moves(&position));
 }
 
+
+
 fn gen_legal_moves(position: &Position) -> Vec<HalfMove> {
 
     let mut moves: Vec<HalfMove> = Vec::new();
@@ -1133,10 +1142,6 @@ fn gen_legal_moves(position: &Position) -> Vec<HalfMove> {
 fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool {
 
     let opp_color = piece_color.opposite();
-
-    if position.board[20] == Some(Piece::Pawn(Color::White)){
-        println!("pawnl1");
-    }
 
     let mut dir_offset = -8;
     let mut offset: i8 = dir_offset;
