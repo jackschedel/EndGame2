@@ -1,6 +1,7 @@
 use std::io::{self, BufRead};
 use std::sync::{Arc, Mutex};
 use std::{fmt, thread};
+use std::fmt::format;
 use std::str::SplitWhitespace;
 use hashbrown::HashSet;
 
@@ -119,7 +120,7 @@ impl fmt::Debug for HalfMove {
 }
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct ColorCastlingRights {
     kingside: bool,
     queenside: bool,
@@ -202,7 +203,7 @@ impl PieceSet {
         }
     }
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct CastlingRights {
     black: ColorCastlingRights,
     white: ColorCastlingRights,
@@ -354,7 +355,40 @@ impl Position {
 
         }
 
-        // todo: also convert flags
+        if self.move_next == Color::Black {
+            fen += " b";
+        } else {
+            fen += " w";
+        }
+
+        fen += " ";
+
+        if self.castling_rights == (CastlingRights{ black: ColorCastlingRights { kingside: false, queenside: false }, white: ColorCastlingRights { kingside: false, queenside: false } }) {
+            fen += "-";
+        } else {
+            if self.castling_rights.white.kingside {
+                fen += "K";
+            }
+            if self.castling_rights.white.queenside {
+                fen += "Q";
+            }
+            if self.castling_rights.black.kingside {
+                fen += "k";
+            }
+            if self.castling_rights.black.queenside {
+                fen += "q";
+            }
+        }
+
+        fen += " ";
+
+        if self.en_passant_target == None {
+            fen += "-";
+        } else {
+            fen += &format!("{}", int_to_coord(self.en_passant_target.unwrap()));
+        }
+
+        fen += &format!(" {} {}", self.halfmove_clock, self.fullmove_number);
 
         return fen;
     }
