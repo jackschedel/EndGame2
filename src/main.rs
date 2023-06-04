@@ -2,10 +2,6 @@ use std::io::{self, BufRead};
 use std::sync::{Arc, Mutex};
 use std::{fmt, thread};
 use std::str::SplitWhitespace;
-use std::borrow::Borrow;
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::panic::resume_unwind;
 use hashbrown::HashSet;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -249,11 +245,6 @@ impl fmt::Debug for PositionTree {
 
         let mut to_print = String::new();
 
-        // todo: implement fen generation
-        let pos_fen = "sample FEN";
-
-
-
         to_print += &format!("Nodes: ");
 
         for i in (0..self.nodes.len()) {
@@ -318,11 +309,54 @@ struct Position {
 
 impl Position {
     fn to_fen(&self) -> String {
-        let mut to_return = String::new();
+        let mut fen = String::new();
 
         // todo: implement to_fen
 
-        return to_return;
+        let mut index: u8 = 64;
+        let mut blank_count: u8;
+
+        for i in 0..8 {
+            index -= 8;
+            blank_count = 0;
+
+            if self.board[index as usize] == None {
+                blank_count += 1;
+            } else {
+                if blank_count != 0 {
+                    fen += &format!("{}", blank_count);
+                    blank_count = 0;
+                }
+                fen += &format!("{}", piece_to_char(self.board[index as usize], false));
+            }
+
+            for j in 0..7 {
+                index += 1;
+                if self.board[index as usize] == None {
+                    blank_count += 1;
+                } else {
+                    if blank_count != 0 {
+                        fen += &format!("{}", blank_count);
+                        blank_count = 0;
+                    }
+                    fen += &format!("{}", piece_to_char(self.board[index as usize], false));
+                }
+            }
+
+            if blank_count != 0 {
+                fen += &format!("{}", blank_count);
+            }
+
+            if i != 7 {
+                fen += "/";
+            }
+            index -= 7;
+
+        }
+
+        // todo: also convert flags
+
+        return fen;
     }
 }
 
