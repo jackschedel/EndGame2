@@ -20,7 +20,7 @@ enum Piece {
     King(Color),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 enum HalfmoveFlag {
     KnightPromotion,
     BishopPromotion,
@@ -101,7 +101,7 @@ impl Piece {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 struct HalfMove {
     from: u8,
     to: u8,
@@ -1097,11 +1097,200 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
 fn gen_legal_moves(position: &Position) -> Vec<HalfMove> {
 
     let mut moves: Vec<HalfMove> = Vec::new();
+    let mut positions: Vec<Position> = Vec::new();
 
     moves = gen_color_pseudolegal_moves(position.move_next, position);
 
-    for mut i in moves.iter_mut() {
+    for i in moves.iter() {
+        let mut position_copy = position.clone();
+        execute_halfmove(&mut position_copy, *i);
+    }
 
+    let opp_color = position.move_next.opposite();
+
+    for i in (0..positions.len()).rev() {
+
+        let king_pos: u8;
+
+        if position.move_next == Color::White {
+            king_pos = positions[i].piece_set.white_king;
+        } else {
+            king_pos = positions[i].piece_set.black_king;
+        }
+
+        let mut dir_offset = -8;
+        let mut offset: i8 = dir_offset;
+
+        loop {
+            if king_pos as i8 + offset < 0 {
+                break;
+            }
+
+            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Rook(opp_color)) {
+                moves.remove(i);
+                break;
+            }
+
+            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Queen(opp_color)) {
+                moves.remove(i);
+                break;
+            }
+
+            offset += dir_offset;
+        }
+
+        dir_offset = 8;
+        offset = dir_offset;
+
+        loop {
+            if king_pos as i8 + offset > 63 {
+                break;
+            }
+
+            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Rook(opp_color)) {
+                moves.remove(i);
+                break;
+            }
+
+            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Queen(opp_color)) {
+                moves.remove(i);
+                break;
+            }
+
+            offset += dir_offset;
+        }
+
+        dir_offset = 1;
+        offset = dir_offset;
+
+        loop {
+            if (king_pos as i8 + offset) % 8 == 0 || king_pos as i8 + offset > 63{
+                break;
+
+            }
+
+            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Rook(opp_color)) {
+                moves.remove(i);
+                break;
+            }
+
+            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Queen(opp_color)) {
+                moves.remove(i);
+                break;
+            }
+
+            offset += dir_offset;
+        }
+
+        dir_offset = -1;
+        offset = dir_offset;
+
+        loop {
+            if (king_pos as i8 + offset) % 8 == 7 || king_pos as i8 + offset < 0{
+                break;
+            }
+
+            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Rook(opp_color)) {
+                moves.remove(i);
+                break;
+            }
+
+            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Queen(opp_color)) {
+                moves.remove(i);
+                break;
+            }
+
+            offset += dir_offset;
+        }
+
+        dir_offset = 9;
+        offset = dir_offset;
+
+        loop {
+            if king_pos as i8 + offset > 63 || (king_pos as i8 + offset) % 8 == 0{
+                break;
+            }
+
+            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Bishop(opp_color)) {
+                moves.remove(i);
+                break;
+            }
+
+            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Queen(opp_color)) {
+                moves.remove(i);
+                break;
+            }
+
+            offset += dir_offset;
+        }
+
+        dir_offset = 7;
+        offset = dir_offset;
+
+        loop {
+            if king_pos as i8 + offset > 63 || (king_pos as i8 + offset) % 8 == 7{
+                break;
+            }
+
+            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Bishop(opp_color)) {
+                moves.remove(i);
+                break;
+            }
+
+            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Queen(opp_color)) {
+                moves.remove(i);
+                break;
+            }
+
+            offset += dir_offset;
+        }
+
+        dir_offset = -9;
+        offset = dir_offset;
+
+        loop {
+            if king_pos as i8 + offset < 0 || (king_pos as i8 + offset) % 8 == 7{
+                break;
+
+            }
+
+            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Bishop(opp_color)) {
+                moves.remove(i);
+                break;
+            }
+
+            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Queen(opp_color)) {
+                moves.remove(i);
+                break;
+            }
+
+            offset += dir_offset;
+        }
+
+        dir_offset = -7;
+        offset = dir_offset;
+
+        loop {
+            if king_pos as i8 + offset < 0 || (king_pos as i8 + offset) % 8 == 0{
+                break;
+            }
+
+            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Bishop(opp_color)) {
+                moves.remove(i);
+                break;
+            }
+
+            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Queen(opp_color)) {
+                moves.remove(i);
+                break;
+            }
+
+            offset += dir_offset;
+        }
+
+        // todo: pawn + knight checks
+        // consider refactoring method out to be used for future attack checks
+        // i really hate how inefficient this is.
     }
 
     return moves;
