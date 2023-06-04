@@ -5,6 +5,7 @@ use std::str::SplitWhitespace;
 use std::borrow::Borrow;
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::panic::resume_unwind;
 use hashbrown::HashSet;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -212,57 +213,96 @@ struct CastlingRights {
 }
 
 #[derive(Clone)]
-struct PositionTreeNode<'a> {
-    parent: Option<Rc<RefCell<PositionTreeNode<'a>>>>,
-    position: Position,
-    children: Vec<Rc<RefCell<PositionTreeNode<'a>>>>,
+struct PositionTree {
+    nodes: Vec<PositionTreeNode>,
 }
 
-impl<'a> PositionTreeNode<'a> {
+impl PositionTree {
+    fn from_pos(position: Position) -> Self {
+        Self {
+            nodes: vec![PositionTreeNode::root_node(position)],
+        }
+    }
+}
+
+#[derive(Clone)]
+struct PositionTreeNode {
+    // parent for 0th index in nodes doesn't matter, will always be root
+    // using option here would be inefficient
+    parent: usize,
+    position: Position,
+    children: Vec<usize>,
+}
+
+impl PositionTreeNode {
     fn root_node(position: Position) -> Self {
         Self {
-            parent: None,
+            parent: 0,
             position,
             children: Vec::new(),
         }
     }
-
-    fn gen_children(&mut self) {
-
-        let positions = gen_possible_positions(&self.position);
-
-        for i in positions.into_iter() {
-            let child_node = PositionTreeNode {
-                parent: Some(Rc::new(RefCell::new(self.to_owned()))),
-                position: i,
-                children: Vec::new(),
-            };
-            self.children.push(Rc::new(RefCell::new(child_node)));
-        }
-
-    }
 }
 
-impl<'a> fmt::Debug for PositionTreeNode<'a> {
+impl fmt::Debug for PositionTree {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 
         let mut to_print = String::new();
 
-        if self.parent.is_none() {
-            to_print += &format!("{{parent: null, ");
-        } else {
-            to_print += &format!("{{parent: exists, ");
+        // todo: implement fen generation
+        let pos_fen = "sample FEN";
+
+
+
+        to_print += &format!("Nodes: ");
+
+        for i in (0..self.nodes.len()) {
+            to_print += &format!("\n {} - {:?}", i, self.nodes[i]);
         }
 
-        // todo: print position as FEN, still need to write fn to do so
+        to_print += &format!("\n\nPositions: ");
 
-        for i in self.children {
-
+        for i in (0..self.nodes.len()) {
+            to_print += &format!("\n {}:", i);
+            to_print += &format!("\n{}", self.nodes[i].position.to_fen());
         }
 
         return write!(f, "{}", to_print);
-
     }
+}
+
+impl fmt::Debug for PositionTreeNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+
+        let mut to_print = String::new();
+
+        to_print += &format!("parent: {}, children: {:?}", self.parent, self.children);
+
+        return write!(f, "{}", to_print);
+    }
+}
+
+impl PositionTree {
+
+    fn gen_children(&mut self, index: usize) {
+        let positions = gen_possible_positions(&self.nodes[index].position);
+
+        let mut children_data: Vec<(usize, PositionTreeNode)> = Vec::new();
+        for i in positions.into_iter() {
+            let child_node = PositionTreeNode {
+                parent: index,
+                position: i,
+                children: Vec::new(),
+            };
+            children_data.push((self.nodes.len(), child_node));
+        }
+
+        for (child_index, child_node) in children_data {
+            self.nodes[index].children.push(child_index);
+            self.nodes.push(child_node);
+        }
+    }
+
 }
 
 #[derive(Clone)]
@@ -274,6 +314,16 @@ struct Position {
     en_passant_target: Option<u8>,
     halfmove_clock: u16,
     fullmove_number: u16,
+}
+
+impl Position {
+    fn to_fen(&self) -> String {
+        let mut to_return = String::new();
+
+        // todo: implement to_fen
+
+        return to_return;
+    }
 }
 
 impl fmt::Debug for Position {
@@ -1181,9 +1231,7 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
 }
 
 fn gen_position_tree(position: Position) {
-    let mut tree = PositionTreeNode::root_node(position);
-
-    tree.gen_children();
+    let mut tree = PositionTree::from_pos(position);
 
     println!("{:?}", tree);
 
