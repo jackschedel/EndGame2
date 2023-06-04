@@ -248,7 +248,9 @@ impl fmt::Debug for PositionTree {
 
         to_print += &format!("Nodes: ");
 
-        for i in (0..self.nodes.len()) {
+        to_print += &format!("\n {} - (root), children: {:?}", 0, self.nodes[0].children);
+
+        for i in (1..self.nodes.len()) {
             to_print += &format!("\n {} - {:?}", i, self.nodes[i]);
         }
 
