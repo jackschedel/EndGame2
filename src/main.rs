@@ -2,6 +2,10 @@ use std::io::{self, BufRead};
 use std::sync::{Arc, Mutex};
 use std::{fmt, thread};
 use std::str::SplitWhitespace;
+use std::borrow::Borrow;
+use std::rc::Rc;
+use std::cell::RefCell;
+use std::panic::resume_unwind;
 use hashbrown::HashSet;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -109,8 +113,6 @@ struct HalfMove {
 }
 impl fmt::Debug for HalfMove {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Customize the output of Debug for YourObject
-
         if self.flag == None {
             return write!(f, "[{} {}]", int_to_coord(self.from), int_to_coord(self.to));
         } else {
@@ -121,7 +123,7 @@ impl fmt::Debug for HalfMove {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct ColorCastlingRights {
     kingside: bool,
     queenside: bool,
@@ -138,8 +140,6 @@ struct PieceSet {
 
 impl fmt::Debug for PieceSet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Customize the output of Debug for YourObject
-
         let mut all_string = String::from("All:");
         let mut sorted_all: Vec<u8> = self.all.iter().cloned().collect();
         sorted_all.sort_unstable();
@@ -206,17 +206,103 @@ impl PieceSet {
         }
     }
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct CastlingRights {
     black: ColorCastlingRights,
     white: ColorCastlingRights,
 }
 
 #[derive(Clone)]
-struct PositionTreeNode<'a> {
-    parent: Option<&'a PositionTreeNode<'a>>,
+struct PositionTree {
+    nodes: Vec<PositionTreeNode>,
+}
+
+impl PositionTree {
+    fn from_pos(position: Position) -> Self {
+        Self {
+            nodes: vec![PositionTreeNode::root_node(position)],
+        }
+    }
+}
+
+#[derive(Clone)]
+struct PositionTreeNode {
+    // parent for 0th index in nodes doesn't matter, will always be root
+    // using option here would be inefficient
+    parent: usize,
     position: Position,
-    children: Vec<&'a PositionTreeNode<'a>>,
+    children: Vec<usize>,
+}
+
+impl PositionTreeNode {
+    fn root_node(position: Position) -> Self {
+        Self {
+            parent: 0,
+            position,
+            children: Vec::new(),
+        }
+    }
+}
+
+impl fmt::Debug for PositionTree {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+
+        let mut to_print = String::new();
+
+        // todo: implement fen generation
+        let pos_fen = "sample FEN";
+
+
+
+        to_print += &format!("Nodes: ");
+
+        for i in (0..self.nodes.len()) {
+            to_print += &format!("\n {} - {:?}", i, self.nodes[i]);
+        }
+
+        to_print += &format!("\n\nPositions: ");
+
+        for i in (0..self.nodes.len()) {
+            to_print += &format!("\n {}:", i);
+            to_print += &format!("\n{}", self.nodes[i].position.to_fen());
+        }
+
+        return write!(f, "{}", to_print);
+    }
+}
+
+impl fmt::Debug for PositionTreeNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+
+        let mut to_print = String::new();
+
+        to_print += &format!("parent: {}, children: {:?}", self.parent, self.children);
+
+        return write!(f, "{}", to_print);
+    }
+}
+
+impl PositionTree {
+
+    fn gen_children(&mut self, index: usize) {
+        let positions = gen_possible_positions(&self.nodes[index].position);
+
+        let mut children_data: Vec<(usize, PositionTreeNode)> = Vec::new();
+        for i in positions.into_iter() {
+            let child_node = PositionTreeNode {
+                parent: index,
+                position: i,
+                children: Vec::new(),
+            };
+            children_data.push((self.nodes.len(), child_node));
+        }
+
+        for (child_index, child_node) in children_data {
+            self.nodes[index].children.push(child_index);
+            self.nodes.push(child_node);
+        }
+    }
+
 }
 
 #[derive(Clone)]
@@ -228,6 +314,44 @@ struct Position {
     en_passant_target: Option<u8>,
     halfmove_clock: u16,
     fullmove_number: u16,
+}
+
+impl Position {
+    fn to_fen(&self) -> String {
+        let mut to_return = String::new();
+
+        // todo: implement to_fen
+
+        return to_return;
+    }
+}
+
+impl fmt::Debug for Position {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+
+        let mut to_print = String::new();
+        to_print += "\n";
+
+        let mut index:usize = 72;
+
+        let mut column_num: u8 = 8;
+        let horiz_space = "   ";
+
+        for _i in 0..8  {
+            index -= 16;
+            to_print += &format!("{} {}", column_num, horiz_space);
+            column_num -= 1;
+            for _j in 0..8  {
+                let piece_char = piece_to_char(self.board[index], false);
+
+                to_print += &format!("{}{}", piece_char, horiz_space);
+                index += 1;
+            }
+            to_print += "\n";
+        }
+        to_print += &format!("\n  {}A{}B{}C{}D{}E{}F{}G{}H\n", horiz_space, horiz_space, horiz_space, horiz_space, horiz_space, horiz_space, horiz_space, horiz_space);
+        return write!(f, "{}", to_print);
+    }
 }
 
 struct EngineOptions {
@@ -1101,10 +1225,17 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
     let color = position.move_next;
 
     // println!("{:?}", gen_color_pseudolegal_moves(position.move_next, &position));
-    println!("{:?}", gen_legal_moves(&position));
+    //println!("{:?}", gen_legal_moves(&position));
+
+    gen_position_tree(position);
 }
 
+fn gen_position_tree(position: Position) {
+    let mut tree = PositionTree::from_pos(position);
 
+    println!("{:?}", tree);
+
+}
 
 fn gen_legal_moves(position: &Position) -> Vec<HalfMove> {
 
@@ -1136,6 +1267,39 @@ fn gen_legal_moves(position: &Position) -> Vec<HalfMove> {
     }
 
     return moves;
+
+}
+
+fn gen_possible_positions(position: &Position) -> Vec<Position> {
+
+    let mut moves: Vec<HalfMove> = Vec::new();
+    let mut positions: Vec<Position> = Vec::new();
+
+    moves = gen_color_pseudolegal_moves(position.move_next, position);
+
+    for i in moves.iter() {
+        let mut position_copy = position.clone();
+        execute_halfmove(&mut position_copy, *i);
+        positions.push(position_copy);
+    }
+
+    for i in (0..positions.len()).rev() {
+        let king_pos: u8;
+
+        if position.move_next == Color::White {
+            king_pos = positions[i].piece_set.white_king;
+        } else {
+            king_pos = positions[i].piece_set.black_king;
+        }
+
+        if is_piece_attacked(king_pos, position.move_next,&positions[i]) {
+            positions.remove(i);
+        }
+
+        // consider refactoring method out to be used for future attack checks
+    }
+
+    return positions;
 
 }
 
