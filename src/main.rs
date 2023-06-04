@@ -515,6 +515,26 @@ fn execute_halfmove(shared_flags: &Arc<Mutex<SharedFlags>>, to_exec: HalfMove) {
 
         shared_flags.lock().unwrap().position.board[to_exec.to as usize] = Some(piece);
         shared_flags.lock().unwrap().position.piece_set.add_index_or_color_swap(to_exec.to, color);
+
+        if piece == Piece::King(Color::White){
+            shared_flags.lock().unwrap().position.castling_rights.white.kingside = false;
+            shared_flags.lock().unwrap().position.castling_rights.white.queenside = false;
+        } else if piece == Piece::King(Color::Black){
+            shared_flags.lock().unwrap().position.castling_rights.black.kingside = false;
+            shared_flags.lock().unwrap().position.castling_rights.black.queenside = false;
+        } else if piece == Piece::Rook(Color::White){
+            if to_exec.from == 0 {
+                shared_flags.lock().unwrap().position.castling_rights.white.queenside = false;
+            } else if to_exec.from == 7 {
+                shared_flags.lock().unwrap().position.castling_rights.white.kingside = false;
+            }
+        } else if piece == Piece::Rook(Color::Black){
+            if to_exec.from == 56 {
+                shared_flags.lock().unwrap().position.castling_rights.black.queenside = false;
+            } else if to_exec.from == 63 {
+                shared_flags.lock().unwrap().position.castling_rights.black.kingside = false;
+            }
+        }
     } else {
         shared_flags.lock().unwrap().position.board[to_exec.to as usize] = None;
         shared_flags.lock().unwrap().position.piece_set.remove_index(to_exec.to, color);
