@@ -1071,7 +1071,23 @@ fn handle_fen_digit(index: &mut usize, char: char) {
 fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlags>>) {
     let position = shared_flags.lock().unwrap().position.clone();
     let color = position.move_next;
-    println!("{:?}", gen_color_pseudolegal_moves(color, &position));
+
+    // println!("{:?}", gen_color_pseudolegal_moves(position.move_next, &position));
+    println!("{:?}", gen_legal_moves(&position));
+}
+
+fn gen_legal_moves(position: &Position) -> Vec<HalfMove> {
+
+    let mut moves: Vec<HalfMove> = Vec::new();
+
+    moves = gen_color_pseudolegal_moves(position.move_next, position);
+
+    for mut i in moves.iter_mut() {
+
+    }
+
+    return moves;
+
 }
 
 fn gen_color_pseudolegal_moves(color: Color, position: &Position) -> Vec<HalfMove> {
