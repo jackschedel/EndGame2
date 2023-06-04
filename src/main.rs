@@ -131,7 +131,9 @@ struct ColorCastlingRights {
 struct PieceSet {
     all: HashSet<u8>,
     white: HashSet<u8>,
-    black: HashSet<u8>
+    black: HashSet<u8>,
+    white_king: u8,
+    black_king: u8,
 }
 
 impl fmt::Debug for PieceSet {
@@ -262,6 +264,8 @@ fn main() {
                 all: HashSet::new(),
                 white: HashSet::new(),
                 black: HashSet::new(),
+                white_king: 5,
+                black_king: 60,
             },
             move_next: Color::White,
             castling_rights: CastlingRights {
@@ -522,9 +526,11 @@ fn execute_halfmove(position: &mut Position, to_exec: HalfMove) {
         if piece == Piece::King(Color::White){
             position.castling_rights.white.kingside = false;
             position.castling_rights.white.queenside = false;
+            position.piece_set.white_king = to_exec.to;
         } else if piece == Piece::King(Color::Black){
             position.castling_rights.black.kingside = false;
             position.castling_rights.black.queenside = false;
+            position.piece_set.black_king = to_exec.to;
         } else if piece == Piece::Rook(Color::White){
             if to_exec.from == 0 {
                 position.castling_rights.white.queenside = false;
@@ -545,6 +551,7 @@ fn execute_halfmove(position: &mut Position, to_exec: HalfMove) {
             if to_exec.to == 0 {
                 position.board[2] = Some(Piece::King(color));
                 position.piece_set.add_index(2, color);
+                position.piece_set.white_king = 2;
 
                 position.board[3] = Some(Piece::Rook(color));
                 position.piece_set.add_index(3, color);
@@ -552,6 +559,7 @@ fn execute_halfmove(position: &mut Position, to_exec: HalfMove) {
                 // to_exec.to = 7
                 position.board[6] = Some(Piece::King(color));
                 position.piece_set.add_index(6, color);
+                position.piece_set.white_king = 6;
 
                 position.board[5] = Some(Piece::Rook(color));
                 position.piece_set.add_index(5, color);
@@ -564,6 +572,7 @@ fn execute_halfmove(position: &mut Position, to_exec: HalfMove) {
             if to_exec.to == 56 {
                 position.board[58] = Some(Piece::King(color));
                 position.piece_set.add_index(58, color);
+                position.piece_set.black_king = 58;
 
                 position.board[59] = Some(Piece::Rook(color));
                 position.piece_set.add_index(59, color);
@@ -571,6 +580,7 @@ fn execute_halfmove(position: &mut Position, to_exec: HalfMove) {
                 // to_exec.to = 63
                 position.board[62] = Some(Piece::King(color));
                 position.piece_set.add_index(62, color);
+                position.piece_set.black_king = 62;
 
                 position.board[61] = Some(Piece::Rook(color));
                 position.piece_set.add_index(61, color);
@@ -878,6 +888,8 @@ fn set_board_from_fen(fen: &str, shared_flags: &Arc<Mutex<SharedFlags>>) {
             all: HashSet::new(),
             white: HashSet::new(),
             black: HashSet::new(),
+            white_king: 5,
+            black_king: 60,
         },
         move_next: Color::White,
         castling_rights: CastlingRights {
@@ -934,13 +946,19 @@ fn handle_fen_char(shared_flags: &Arc<Mutex<SharedFlags>>, mut index: &mut usize
         'B' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Bishop(Color::White)),
         'R' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Rook(Color::White)),
         'Q' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Queen(Color::White)),
-        'K' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::King(Color::White)),
+        'K' => {
+            shared_flags.lock().unwrap().position.board[*index] = Some(Piece::King(Color::White));
+            shared_flags.lock().unwrap().position.piece_set.white_king = *index as u8;
+        },
         'p' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Pawn(Color::Black)),
         'n' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Knight(Color::Black)),
         'b' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Bishop(Color::Black)),
         'r' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Rook(Color::Black)),
         'q' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Queen(Color::Black)),
-        'k' => shared_flags.lock().unwrap().position.board[*index] = Some(Piece::King(Color::Black)),
+        'k' => {
+            shared_flags.lock().unwrap().position.board[*index] = Some(Piece::King(Color::Black));
+            shared_flags.lock().unwrap().position.piece_set.black_king = *index as u8;
+        },
         _ => handle_fen_digit(&mut index, char)
     }
 
