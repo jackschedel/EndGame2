@@ -326,7 +326,10 @@ fn main() {
     //let position_cmd = "position startpos moves e2e3 e7e6 Qd1e2 Qd8e7 d2d3 d7d6 Bc1d2 Bc8d7 Nb1c3 Nb8c6 e1a1 e8a8";
 
     // castle setup
-    let position_cmd = "position fen r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1";
+    // let position_cmd = "position fen r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1";
+
+    // check testing
+    let position_cmd = "position startpos moves d2d3 e7e6 Ke1d2 Qd8g5";
 
     // startpos+1
     //let position_cmd = "position startpos moves e2e3";
@@ -1104,12 +1107,10 @@ fn gen_legal_moves(position: &Position) -> Vec<HalfMove> {
     for i in moves.iter() {
         let mut position_copy = position.clone();
         execute_halfmove(&mut position_copy, *i);
+        positions.push(position_copy);
     }
 
-    let opp_color = position.move_next.opposite();
-
     for i in (0..positions.len()).rev() {
-
         let king_pos: u8;
 
         if position.move_next == Color::White {
@@ -1118,183 +1119,292 @@ fn gen_legal_moves(position: &Position) -> Vec<HalfMove> {
             king_pos = positions[i].piece_set.black_king;
         }
 
-        let mut dir_offset = -8;
-        let mut offset: i8 = dir_offset;
-
-        loop {
-            if king_pos as i8 + offset < 0 {
-                break;
-            }
-
-            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Rook(opp_color)) {
-                moves.remove(i);
-                break;
-            }
-
-            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Queen(opp_color)) {
-                moves.remove(i);
-                break;
-            }
-
-            offset += dir_offset;
+        if is_piece_attacked(king_pos, position.move_next,&positions[i]) {
+            moves.remove(i);
         }
 
-        dir_offset = 8;
-        offset = dir_offset;
-
-        loop {
-            if king_pos as i8 + offset > 63 {
-                break;
-            }
-
-            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Rook(opp_color)) {
-                moves.remove(i);
-                break;
-            }
-
-            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Queen(opp_color)) {
-                moves.remove(i);
-                break;
-            }
-
-            offset += dir_offset;
-        }
-
-        dir_offset = 1;
-        offset = dir_offset;
-
-        loop {
-            if (king_pos as i8 + offset) % 8 == 0 || king_pos as i8 + offset > 63{
-                break;
-
-            }
-
-            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Rook(opp_color)) {
-                moves.remove(i);
-                break;
-            }
-
-            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Queen(opp_color)) {
-                moves.remove(i);
-                break;
-            }
-
-            offset += dir_offset;
-        }
-
-        dir_offset = -1;
-        offset = dir_offset;
-
-        loop {
-            if (king_pos as i8 + offset) % 8 == 7 || king_pos as i8 + offset < 0{
-                break;
-            }
-
-            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Rook(opp_color)) {
-                moves.remove(i);
-                break;
-            }
-
-            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Queen(opp_color)) {
-                moves.remove(i);
-                break;
-            }
-
-            offset += dir_offset;
-        }
-
-        dir_offset = 9;
-        offset = dir_offset;
-
-        loop {
-            if king_pos as i8 + offset > 63 || (king_pos as i8 + offset) % 8 == 0{
-                break;
-            }
-
-            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Bishop(opp_color)) {
-                moves.remove(i);
-                break;
-            }
-
-            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Queen(opp_color)) {
-                moves.remove(i);
-                break;
-            }
-
-            offset += dir_offset;
-        }
-
-        dir_offset = 7;
-        offset = dir_offset;
-
-        loop {
-            if king_pos as i8 + offset > 63 || (king_pos as i8 + offset) % 8 == 7{
-                break;
-            }
-
-            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Bishop(opp_color)) {
-                moves.remove(i);
-                break;
-            }
-
-            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Queen(opp_color)) {
-                moves.remove(i);
-                break;
-            }
-
-            offset += dir_offset;
-        }
-
-        dir_offset = -9;
-        offset = dir_offset;
-
-        loop {
-            if king_pos as i8 + offset < 0 || (king_pos as i8 + offset) % 8 == 7{
-                break;
-
-            }
-
-            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Bishop(opp_color)) {
-                moves.remove(i);
-                break;
-            }
-
-            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Queen(opp_color)) {
-                moves.remove(i);
-                break;
-            }
-
-            offset += dir_offset;
-        }
-
-        dir_offset = -7;
-        offset = dir_offset;
-
-        loop {
-            if king_pos as i8 + offset < 0 || (king_pos as i8 + offset) % 8 == 0{
-                break;
-            }
-
-            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Bishop(opp_color)) {
-                moves.remove(i);
-                break;
-            }
-
-            if positions[i].board[(king_pos as i8 + offset) as usize] == Some(Piece::Queen(opp_color)) {
-                moves.remove(i);
-                break;
-            }
-
-            offset += dir_offset;
-        }
-
-        // todo: pawn + knight checks
         // consider refactoring method out to be used for future attack checks
-        // i really hate how inefficient this is.
     }
 
     return moves;
 
+}
+
+fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool {
+
+    let opp_color = piece_color.opposite();
+
+    if position.board[20] == Some(Piece::Pawn(Color::White)){
+        println!("pawnl1");
+    }
+
+    let mut dir_offset = -8;
+    let mut offset: i8 = dir_offset;
+
+    loop {
+        if index as i8 + offset < 0 {
+            break;
+        }
+
+        if let Some(piece) = position.board[(index as i8 + offset) as usize]{
+
+            if piece == Piece::Queen(opp_color) || piece == Piece::Rook(opp_color) {
+                return true;
+            }
+
+            break;
+        }
+
+
+        offset += dir_offset;
+    }
+
+    dir_offset = 8;
+    offset = dir_offset;
+
+    loop {
+        if index as i8 + offset > 63 {
+            break;
+        }
+
+        if let Some(piece) = position.board[(index as i8 + offset) as usize]{
+
+            if piece == Piece::Queen(opp_color) || piece == Piece::Rook(opp_color) {
+                return true;
+            }
+
+            break;
+        }
+
+
+        offset += dir_offset;
+    }
+
+    dir_offset = 1;
+    offset = dir_offset;
+
+    loop {
+        if (index as i8 + offset) % 8 == 0 || index as i8 + offset > 63{
+            break;
+
+        }
+
+        if let Some(piece) = position.board[(index as i8 + offset) as usize]{
+
+            if piece == Piece::Queen(opp_color) || piece == Piece::Rook(opp_color) {
+                return true;
+            }
+
+            break;
+        }
+
+
+        offset += dir_offset;
+    }
+
+    dir_offset = -1;
+    offset = dir_offset;
+
+    loop {
+        if (index as i8 + offset) % 8 == 7 || index as i8 + offset < 0{
+            break;
+        }
+
+        if let Some(piece) = position.board[(index as i8 + offset) as usize]{
+
+            if piece == Piece::Queen(opp_color) || piece == Piece::Rook(opp_color) {
+                return true;
+            }
+
+            break;
+        }
+
+
+        offset += dir_offset;
+    }
+
+    dir_offset = 9;
+    offset = dir_offset;
+
+    loop {
+        if index as i8 + offset > 63 || (index as i8 + offset) % 8 == 0{
+            break;
+        }
+
+        if let Some(piece) = position.board[(index as i8 + offset) as usize]{
+
+            if piece == Piece::Queen(opp_color) || piece == Piece::Bishop(opp_color) {
+                return true;
+            }
+
+            break;
+        }
+
+        offset += dir_offset;
+    }
+
+    dir_offset = 7;
+    offset = dir_offset;
+
+    loop {
+        if index as i8 + offset > 63 || (index as i8 + offset) % 8 == 7{
+            break;
+        }
+
+        if let Some(piece) = position.board[(index as i8 + offset) as usize]{
+
+            if piece == Piece::Queen(opp_color) || piece == Piece::Bishop(opp_color) {
+                return true;
+            }
+
+            break;
+        }
+
+        offset += dir_offset;
+    }
+
+    dir_offset = -9;
+    offset = dir_offset;
+
+    loop {
+        if index as i8 + offset < 0 || (index as i8 + offset) % 8 == 7{
+            break;
+
+        }
+
+        if let Some(piece) = position.board[(index as i8 + offset) as usize]{
+
+            if piece == Piece::Queen(opp_color) || piece == Piece::Bishop(opp_color) {
+                return true;
+            }
+
+            break;
+        }
+
+        offset += dir_offset;
+    }
+
+    dir_offset = -7;
+    offset = dir_offset;
+
+    loop {
+        if index as i8 + offset < 0 || (index as i8 + offset) % 8 == 0{
+            break;
+        }
+
+        if let Some(piece) = position.board[(index as i8 + offset) as usize]{
+
+            if piece == Piece::Queen(opp_color) || piece == Piece::Bishop(opp_color) {
+                return true;
+            }
+
+            break;
+        }
+
+        offset += dir_offset;
+    }
+
+    // knight checks
+    // up 2
+    if (index / 8) <= 5 {
+        // right 1
+        if (index % 8) <= 6 {
+            if position.board[(index as i8 + 17) as usize] == Some(Piece::Knight(opp_color)) {
+                return true;
+            }
+        }
+
+        // left 1
+        if (index % 8) >= 1 {
+            if position.board[(index as i8 + 15) as usize] == Some(Piece::Knight(opp_color)) {
+                return true;
+            }
+        }
+    }
+
+    // right 2
+    if (index % 8) <= 5 {
+        // up 1
+        if (index / 8) <= 6 {
+            if position.board[(index as i8 + 10) as usize] == Some(Piece::Knight(opp_color)) {
+                return true;
+            }
+        }
+
+        // down 1
+        if (index / 8) >= 1 {
+            if position.board[(index as i8 - 6) as usize] == Some(Piece::Knight(opp_color)) {
+                return true;
+            }
+        }
+    }
+
+    // down 2
+    if (index / 8) >= 2 {
+        // right 1
+        if (index % 8) <= 6 {
+            if position.board[(index as i8 - 15) as usize] == Some(Piece::Knight(opp_color)) {
+                return true;
+            }
+        }
+
+        // left 1
+        if (index % 8) >= 1 {
+            if position.board[(index as i8 - 17) as usize] == Some(Piece::Knight(opp_color)) {
+                return true;
+            }
+        }
+    }
+
+    // left 2
+    if (index % 8) >= 2 {
+        // up 1
+        if (index / 8) <= 6 {
+            if position.board[(index as i8 + 6) as usize] == Some(Piece::Knight(opp_color)) {
+                return true;
+            }
+        }
+
+        // down 1
+        if (index / 8) >= 1 {
+            if position.board[(index as i8 - 10) as usize] == Some(Piece::Knight(opp_color)) {
+                return true;
+            }
+        }
+    }
+
+    // pawn checks (not counting en-passant)
+    if position.move_next == Color::Black && index > 7{
+        if index % 8 > 0 {
+            if position.board[(index as i8 - 7) as usize] == Some(Piece::Pawn(opp_color)) {
+                return true;
+            }
+        }
+
+        if index % 8 < 7 {
+            if position.board[(index as i8 - 9) as usize] == Some(Piece::Pawn(opp_color)) {
+                return true;
+            }
+        }
+    }
+
+    if position.move_next == Color::White && index < 56{
+        if index % 8 > 0 {
+            if position.board[(index as i8 + 9) as usize] == Some(Piece::Pawn(opp_color)) {
+                return true;
+            }
+        }
+
+        if index % 8 < 7 {
+            if position.board[(index as i8 + 7) as usize] == Some(Piece::Pawn(opp_color)) {
+                return true;
+            }
+        }
+    }
+
+    // todo: implement en-passant check so fn can be generalized for universal use including pawns
+
+    return false;
 }
 
 fn gen_color_pseudolegal_moves(color: Color, position: &Position) -> Vec<HalfMove> {
