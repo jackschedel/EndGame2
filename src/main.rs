@@ -1,6 +1,7 @@
 use std::io::{self, BufRead};
 use std::sync::{Arc, Mutex};
 use std::{fmt, thread};
+use std::collections::VecDeque;
 use std::str::SplitWhitespace;
 use hashbrown::HashSet;
 
@@ -231,6 +232,7 @@ struct CastlingRights {
 #[derive(Clone)]
 struct PositionTree {
     nodes: Vec<PositionTreeNode>,
+    depth: u8,
 }
 
 #[derive(Clone)]
@@ -247,6 +249,7 @@ impl PositionTree {
     fn from_pos(position: Position) -> Self {
         Self {
             nodes: vec![PositionTreeNode::root_node(position)],
+            depth: 0,
         }
     }
 
@@ -267,10 +270,38 @@ impl PositionTree {
             self.nodes[index].children.push(curr_size);
             self.nodes.push(child_node);
         }
+    }
 
-        if self.nodes[index].halfmove != None {
-            println!("{}: {}", self.nodes[index].halfmove.unwrap().move_to_coords(), moves.len());
+    fn disp_move_counts(&self) {
+        for i in self.nodes[0].children.iter() {
+            let move_count = self.clone().count_children(*i);
+            println!("{}: {}", self.nodes[*i].halfmove.unwrap().move_to_coords(), move_count);
         }
+    }
+
+    fn count_children(self, index: usize) -> u32{
+        // note: relative depth
+        let mut count: u32 = 0;
+        let mut queue: VecDeque<usize> = VecDeque::new();
+
+        // None = new depth
+        queue.push_back(index);
+
+        while !queue.is_empty() {
+            let current = queue.pop_front().unwrap();
+
+            if self.nodes[current].children.is_empty() {
+                count += 1;
+            } else {
+                for i in self.nodes[current].children.iter() {
+                    queue.push_back(*i);
+                }
+            }
+
+        }
+
+        return count;
+
     }
 
     fn increase_depth(&mut self) -> usize {
@@ -278,6 +309,8 @@ impl PositionTree {
         if self.nodes.len() == 0 {
             return 0;
         }
+
+        self.depth += 1;
 
         if self.nodes.len() == 1 {
             self.gen_children(0);
@@ -526,7 +559,7 @@ fn main() {
         // settings
         options: EngineOptions {
             multi_pv: 1,
-            debug_indexes: true,
+            debug_indexes: false,
             debug_sets_display: false,
             debug_use_symbols: false,
         }
@@ -539,9 +572,6 @@ fn main() {
     });
 
     // Main program logic
-    let shared_flags_clone = Arc::clone(&shared_flags);
-
-
     handle_command("uci".to_string(), &shared_flags);
 
     handle_command("debug on".to_string(), &shared_flags);
@@ -582,6 +612,10 @@ fn main() {
 
     // https://www.chessprogramming.org/Perft_Results Position 5
     let position_cmd = "position fen rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
+
+    // Position 5 testing
+    //let position_cmd = "position fen rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8 moves Bc1h6";
+
 
 
     handle_command(position_cmd.to_string(), &shared_flags);
@@ -1342,51 +1376,22 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
     let position = shared_flags.lock().unwrap().position.clone();
     let color = position.move_next;
 
-    gen_position_tree(position);
+    //println!("{}{:?}", gen_possible(&position).1.len(), gen_possible(&position).1);
+
+    gen_position_tree(position, 3);
 }
 
-fn gen_position_tree(position: Position) {
+fn gen_position_tree(position: Position, depth: u8) {
     let mut tree = PositionTree::from_pos(position);
 
-    for i in 1..3 {
+    for i in 1..(depth+1) {
         let possible_moves = tree.increase_depth();
 
         println!("\nDepth {}: {} positions", i, possible_moves);
         // println!("{:?}", tree);
     }
 
-}
-
-fn gen_legal_moves(position: &Position) -> Vec<HalfMove> {
-
-    let mut moves: Vec<HalfMove> = Vec::new();
-    let mut positions: Vec<Position> = Vec::new();
-
-    moves = gen_pseudolegal_moves(position);
-    
-    for i in moves.iter() {
-        let mut position_copy = position.clone();
-        execute_halfmove(&mut position_copy, *i);
-        positions.push(position_copy);
-    }
-
-    for i in (0..positions.len()).rev() {
-        let king_pos: u8;
-
-        if position.move_next == Color::White {
-            king_pos = positions[i].piece_set.white_king;
-        } else {
-            king_pos = positions[i].piece_set.black_king;
-        }
-
-        if is_piece_attacked(king_pos, position.move_next,&positions[i]) {
-            moves.remove(i);
-        }
-
-        // consider refactoring method out to be used for future attack checks
-    }
-
-    return moves;
+    tree.disp_move_counts();
 
 }
 
@@ -1421,39 +1426,6 @@ fn gen_possible(position: &Position) -> (Vec<Position>, Vec<HalfMove>) {
     }
 
     return (positions, moves);
-
-}
-
-fn gen_possible_positions(position: &Position) -> Vec<Position> {
-
-    let mut moves: Vec<HalfMove> = Vec::new();
-    let mut positions: Vec<Position> = Vec::new();
-
-    moves = gen_pseudolegal_moves(position);
-
-    for i in moves.iter() {
-        let mut position_copy = position.clone();
-        execute_halfmove(&mut position_copy, *i);
-        positions.push(position_copy);
-    }
-
-    for i in (0..positions.len()).rev() {
-        let king_pos: u8;
-
-        if position.move_next == Color::White {
-            king_pos = positions[i].piece_set.white_king;
-        } else {
-            king_pos = positions[i].piece_set.black_king;
-        }
-
-        if is_piece_attacked(king_pos, position.move_next,&positions[i]) {
-            positions.remove(i);
-        }
-
-        // consider refactoring method out to be used for future attack checks
-    }
-
-    return positions;
 
 }
 
@@ -2200,7 +2172,7 @@ fn gen_black_pawn_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfM
 
     // captures (left/right orientation with white as bottom)
     let should_promote:bool;
-    if (index / 8) == 6 {
+    if (index / 8) == 1 {
         should_promote = true;
     } else {
         should_promote = false;
