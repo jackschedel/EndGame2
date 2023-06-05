@@ -118,6 +118,26 @@ impl fmt::Debug for HalfMove {
     }
 }
 
+impl HalfMove {
+    fn move_to_coords(&self) -> String {
+
+        let promotion_str;
+
+        match self.flag {
+            Some(HalfmoveFlag::QueenPromotion) => {promotion_str = "q"},
+            Some(HalfmoveFlag::RookPromotion) => {promotion_str = "r"},
+            Some(HalfmoveFlag::KnightPromotion) => {promotion_str = "k"},
+            Some(HalfmoveFlag::BishopPromotion) => {promotion_str = "b"},
+
+            _ => {promotion_str = ""}
+        }
+
+
+        return format!("{}{}{}", int_to_coord(self.from), int_to_coord(self.to), promotion_str);
+
+    }
+}
+
 
 #[derive(Clone, Debug, PartialEq)]
 struct ColorCastlingRights {
@@ -213,6 +233,16 @@ struct PositionTree {
     nodes: Vec<PositionTreeNode>,
 }
 
+#[derive(Clone)]
+struct PositionTreeNode {
+    // parent for 0th index in nodes doesn't matter, will always be root
+    // using option here would be inefficient
+    parent: usize,
+    position: Position,
+    children: Vec<usize>,
+    halfmove: Option<HalfMove>,
+}
+
 impl PositionTree {
     fn from_pos(position: Position) -> Self {
         Self {
@@ -221,17 +251,25 @@ impl PositionTree {
     }
 
     fn gen_children(&mut self, index: usize) {
-        let positions = gen_possible_positions(&self.nodes[index].position);
+        let genned = gen_possible(&self.nodes[index].position);
 
-        for i in positions.into_iter() {
+        let positions = genned.0;
+        let moves = genned.1;
+
+        for i in 0..positions.len() {
             let child_node = PositionTreeNode {
                 parent: index,
-                position: i,
+                position: positions[i].clone(),
                 children: Vec::new(),
+                halfmove: Some(moves[i].clone()),
             };
             let curr_size = self.nodes.len();
             self.nodes[index].children.push(curr_size);
             self.nodes.push(child_node);
+        }
+
+        if self.nodes[index].halfmove != None {
+            println!("{}: {}", self.nodes[index].halfmove.unwrap().move_to_coords(), moves.len());
         }
     }
 
@@ -260,21 +298,13 @@ impl PositionTree {
     }
 }
 
-#[derive(Clone)]
-struct PositionTreeNode {
-    // parent for 0th index in nodes doesn't matter, will always be root
-    // using option here would be inefficient
-    parent: usize,
-    position: Position,
-    children: Vec<usize>,
-}
-
 impl PositionTreeNode {
     fn root_node(position: Position) -> Self {
         Self {
             parent: 0,
             position,
             children: Vec::new(),
+            halfmove: None,
         }
     }
 }
@@ -1318,7 +1348,7 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
 fn gen_position_tree(position: Position) {
     let mut tree = PositionTree::from_pos(position);
 
-    for i in 1..6 {
+    for i in 1..3 {
         let possible_moves = tree.increase_depth();
 
         println!("\nDepth {}: {} positions", i, possible_moves);
@@ -1357,6 +1387,40 @@ fn gen_legal_moves(position: &Position) -> Vec<HalfMove> {
     }
 
     return moves;
+
+}
+
+fn gen_possible(position: &Position) -> (Vec<Position>, Vec<HalfMove>) {
+
+    let mut moves: Vec<HalfMove> = Vec::new();
+    let mut positions: Vec<Position> = Vec::new();
+
+    moves = gen_pseudolegal_moves(position);
+
+    for i in moves.iter() {
+        let mut position_copy = position.clone();
+        execute_halfmove(&mut position_copy, *i);
+        positions.push(position_copy);
+    }
+
+    for i in (0..positions.len()).rev() {
+        let king_pos: u8;
+
+        if position.move_next == Color::White {
+            king_pos = positions[i].piece_set.white_king;
+        } else {
+            king_pos = positions[i].piece_set.black_king;
+        }
+
+        if is_piece_attacked(king_pos, position.move_next,&positions[i]) {
+            positions.remove(i);
+            moves.remove(i);
+        }
+
+        // consider refactoring method out to be used for future attack checks
+    }
+
+    return (positions, moves);
 
 }
 
