@@ -5,6 +5,8 @@ use std::collections::VecDeque;
 use std::str::SplitWhitespace;
 use hashbrown::HashSet;
 
+const GLOBAL_DEPTH: u8 = 2;
+
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum Color {
     Black,
@@ -254,7 +256,7 @@ impl PositionTree {
     }
 
     fn gen_children(&mut self, index: usize) {
-        let genned = gen_possible(&self.nodes[index].position);
+        let genned = gen_possible(&mut self.nodes[index].position);
 
         let positions = genned.0;
         let moves = genned.1;
@@ -611,11 +613,10 @@ fn main() {
     //let position_cmd = "position startpos moves e2e3";
 
     // https://www.chessprogramming.org/Perft_Results Position 5
-    let position_cmd = "position fen rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
+    //let position_cmd = "position fen rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
 
     // Position 5 testing
-    //let position_cmd = "position fen rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8 moves Bc1h6";
-
+    let mut position_cmd = "position fen rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8 moves c4a6";
 
 
     handle_command(position_cmd.to_string(), &shared_flags);
@@ -1377,8 +1378,9 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
     let color = position.move_next;
 
     //println!("{}{:?}", gen_possible(&position).1.len(), gen_possible(&position).1);
+    //println!("{}{:?}", gen_possible(&position).1.len(), gen_possible(&position).1);
 
-    gen_position_tree(position, 3);
+    gen_position_tree(position, GLOBAL_DEPTH);
 }
 
 fn gen_position_tree(position: Position, depth: u8) {
@@ -1395,10 +1397,26 @@ fn gen_position_tree(position: Position, depth: u8) {
 
 }
 
-fn gen_possible(position: &Position) -> (Vec<Position>, Vec<HalfMove>) {
+fn gen_possible(position: &mut Position) -> (Vec<Position>, Vec<HalfMove>) {
 
     let mut moves: Vec<HalfMove> = Vec::new();
     let mut positions: Vec<Position> = Vec::new();
+
+    let king_pos: u8;
+
+    if position.move_next == Color::White {
+        king_pos = position.piece_set.white_king;
+    } else {
+        king_pos = position.piece_set.black_king;
+    }
+
+    if is_piece_attacked(king_pos, position.move_next, position) {
+        if position.move_next == Color::White {
+            position.castling_rights.white = ColorCastlingRights { kingside: false, queenside: false };
+        } else {
+            position.castling_rights.black = ColorCastlingRights { kingside: false, queenside: false };
+        }
+    }
 
     moves = gen_pseudolegal_moves(position);
 
