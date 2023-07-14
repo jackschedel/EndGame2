@@ -2,6 +2,7 @@
 
 <h4 align="center"><b>UCI-Compatible Chess Engine Using Minimax Tree Traversal</b></h4>
 
+<p align="center">
 <a href="https://github.com/jackschedel/EndGame2/issues" target="_blank">
 <img src="https://img.shields.io/github/issues/jackschedel/EndGame2?style=flat-square" alt="issues"/>
 </a>
