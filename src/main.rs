@@ -5,7 +5,7 @@ use std::str::SplitWhitespace;
 use std::sync::{Arc, Mutex};
 use std::{fmt, thread};
 
-const GLOBAL_DEPTH: u8 = 2;
+const GLOBAL_DEPTH: u8 = 4;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum Color {
@@ -279,13 +279,18 @@ impl PositionTree {
     }
 
     fn disp_move_counts(&self) {
-        for i in self.nodes[0].children.iter() {
-            let move_count = self.clone().count_children(*i);
-            println!(
-                "{}: {}",
-                self.nodes[*i].halfmove.unwrap().move_to_coords(),
-                move_count
-            );
+        let mut children_with_moves: Vec<(usize, String)> = self.nodes[0]
+            .children
+            .iter()
+            .map(|&child_index| {
+                let move_coords = self.nodes[child_index].halfmove.unwrap().move_to_coords();
+                (child_index, move_coords)
+            })
+            .collect();
+        children_with_moves.sort_by(|a, b| a.1.cmp(&b.1));
+        for &(child_index, ref move_coords) in children_with_moves.iter() {
+            let move_count = self.clone().count_children(child_index);
+            println!("{}: {}", move_coords, move_count);
         }
     }
 
@@ -631,13 +636,12 @@ fn main() {
     // https://www.chessprogramming.org/Perft_Results Position 5
     //let position_cmd = "position fen rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
 
-    // Position 5 testing
-    let mut position_cmd =
-        "position fen rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8 moves c4a6";
-
-    handle_command(position_cmd.to_string(), &shared_flags);
-
-    handle_command("go".to_string(), &shared_flags);
+    // // Position 5 testing
+    // let position_cmd = "position fen rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
+    //
+    // handle_command(position_cmd.to_string(), &shared_flags);
+    //
+    // handle_command("go".to_string(), &shared_flags);
 
     // print_index_reference();
 
@@ -1477,25 +1481,36 @@ fn handle_fen_digit(index: &mut usize, char: char) {
 
 fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlags>>) {
     let position = shared_flags.lock().unwrap().position.clone();
-    let color = position.move_next;
 
-    //println!("{}{:?}", gen_possible(&position).1.len(), gen_possible(&position).1);
-    //println!("{}{:?}", gen_possible(&position).1.len(), gen_possible(&position).1);
+    let token1 = command.next();
 
-    gen_position_tree(position, GLOBAL_DEPTH);
+    match token1 {
+        Some("perft") => {
+            if let Some(token2) = command.next() {
+                match token2.parse::<u8>() {
+                    Ok(depth) => gen_position_tree(position, depth),
+                    Err(_) => println!("Error: Depth must be a valid number!"),
+                }
+            } else {
+                println!("Error: Depth not specified for perft command!");
+            }
+        }
+        _ => println!("Go command improperly formatted!"),
+    }
 }
 
 fn gen_position_tree(position: Position, depth: u8) {
     let mut tree = PositionTree::from_pos(position);
 
-    for i in 1..(depth + 1) {
-        let possible_moves = tree.increase_depth();
+    let mut possible_moves = tree.increase_depth();
 
-        println!("\nDepth {}: {} positions", i, possible_moves);
-        // println!("{:?}", tree);
+    for i in 1..(depth) {
+        possible_moves = tree.increase_depth();
     }
 
     tree.disp_move_counts();
+
+    println!("\nNodes searched: {}", possible_moves);
 }
 
 fn gen_possible(position: &mut Position) -> (Vec<Position>, Vec<HalfMove>) {
@@ -2443,7 +2458,7 @@ fn gen_black_pawn_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfM
                 } else {
                     moves.push(HalfMove {
                         from: index,
-                        to: (index - 7),
+                        to: (index - 9),
                         flag: None,
                     });
                 }
