@@ -140,10 +140,18 @@ impl HalfMove {
         }
 
         if self.flag == Some(HalfmoveFlag::Castle) {
-            if self.to == 0 {
-                return "e1c1".to_string();
+            if self.from == 4 {
+                if self.to == 0 {
+                    return "e1c1".to_string();
+                } else {
+                    return "e1g1".to_string();
+                }
             } else {
-                return "e1g1".to_string();
+                if self.to == 56 {
+                    return "e8c8".to_string();
+                } else {
+                    return "e8g8".to_string();
+                }
             }
         }
 
@@ -644,9 +652,10 @@ fn main() {
     // https://www.chessprogramming.org/Perft_Results Position 5
     //let position_cmd = "position fen rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
 
-    let position_cmd = "position fen 8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - ";
+    let position_cmd =
+        "position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
     handle_command(position_cmd.to_string(), &shared_flags);
-    handle_command("go perft 1".to_string(), &shared_flags);
+    // handle_command("go perft 1".to_string(), &shared_flags);
 
     // print_index_reference();
 
@@ -1533,7 +1542,7 @@ fn gen_position_tree(position: Position, depth: u8) {
 
     let mut possible_moves = tree.increase_depth();
 
-    for i in 1..(depth) {
+    for _ in 1..(depth) {
         possible_moves = tree.increase_depth();
     }
 
@@ -1543,7 +1552,7 @@ fn gen_position_tree(position: Position, depth: u8) {
 }
 
 fn gen_possible(position: &mut Position) -> (Vec<Position>, Vec<HalfMove>) {
-    let mut moves: Vec<HalfMove> = Vec::new();
+    let mut moves: Vec<HalfMove>;
     let mut positions: Vec<Position> = Vec::new();
 
     let king_pos: u8;
@@ -1886,6 +1895,9 @@ fn gen_pseudolegal_moves(position: &Position) -> Vec<HalfMove> {
                 && position.board[62] == None
                 && position.board[61] == None
                 && position.board[60] == Some(Piece::King(Color::Black))
+                && !is_piece_attacked(60, Color::Black, position)
+                && !is_piece_attacked(61, Color::Black, position)
+                && !is_piece_attacked(62, Color::Black, position)
             {
                 moves.push(HalfMove {
                     from: 60,
@@ -1901,6 +1913,9 @@ fn gen_pseudolegal_moves(position: &Position) -> Vec<HalfMove> {
                 && position.board[58] == None
                 && position.board[59] == None
                 && position.board[60] == Some(Piece::King(Color::Black))
+                && !is_piece_attacked(60, Color::Black, position)
+                && !is_piece_attacked(59, Color::Black, position)
+                && !is_piece_attacked(58, Color::Black, position)
             {
                 moves.push(HalfMove {
                     from: 60,
@@ -1916,6 +1931,9 @@ fn gen_pseudolegal_moves(position: &Position) -> Vec<HalfMove> {
                 && position.board[2] == None
                 && position.board[3] == None
                 && position.board[4] == Some(Piece::King(Color::White))
+                && !is_piece_attacked(4, Color::White, position)
+                && !is_piece_attacked(3, Color::White, position)
+                && !is_piece_attacked(2, Color::White, position)
             {
                 moves.push(HalfMove {
                     from: 4,
@@ -1930,6 +1948,9 @@ fn gen_pseudolegal_moves(position: &Position) -> Vec<HalfMove> {
                 && position.board[6] == None
                 && position.board[5] == None
                 && position.board[4] == Some(Piece::King(Color::White))
+                && !is_piece_attacked(4, Color::White, position)
+                && !is_piece_attacked(5, Color::White, position)
+                && !is_piece_attacked(6, Color::White, position)
             {
                 moves.push(HalfMove {
                     from: 4,
