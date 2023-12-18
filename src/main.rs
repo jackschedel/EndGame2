@@ -979,11 +979,35 @@ fn string_to_halfmove(
     }
 
     let coord2_str: String = move_string.chars().skip(char_index).take(2).collect();
-    let coord2 = coord_to_int(&coord2_str);
+    let mut coord2 = coord_to_int(&coord2_str);
 
     let mut flag: Option<HalfmoveFlag> = None;
 
     let board = shared_flags.lock().unwrap().position.board;
+
+    if is_pieceless_move {
+        match board[coord1 as usize] {
+            Some(Piece::King(_)) => {
+                if coord1 == 4 {
+                    if coord2 == 2 {
+                        coord2 = 0;
+                    }
+                    if coord2 == 6 {
+                        coord2 = 7;
+                    }
+
+                    if coord2 != 0 && coord2 != 7 {
+                        is_pieceless_move = false;
+                    }
+                }
+            }
+            Some(Piece::Pawn(_)) => {}
+            None => {}
+            _ => {
+                is_pieceless_move = false;
+            }
+        }
+    }
 
     if is_pieceless_move {
         // pawn action or castling
