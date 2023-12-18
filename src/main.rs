@@ -139,6 +139,14 @@ impl HalfMove {
             _ => promotion_str = "",
         }
 
+        if self.flag == Some(HalfmoveFlag::Castle) {
+            if self.to == 0 {
+                return "e1c1".to_string();
+            } else {
+                return "e1g1".to_string();
+            }
+        }
+
         return format!(
             "{}{}{}",
             int_to_coord(self.from),
@@ -636,12 +644,9 @@ fn main() {
     // https://www.chessprogramming.org/Perft_Results Position 5
     //let position_cmd = "position fen rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
 
-    // // Position 5 testing
-    // let position_cmd = "position fen rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
-    //
-    // handle_command(position_cmd.to_string(), &shared_flags);
-    //
-    // handle_command("go".to_string(), &shared_flags);
+    let position_cmd = "position fen 8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - ";
+    handle_command(position_cmd.to_string(), &shared_flags);
+    handle_command("go perft 1".to_string(), &shared_flags);
 
     // print_index_reference();
 
@@ -1964,12 +1969,12 @@ fn gen_halfmove_with_check(offset: i8, index: u8, position: &Position, moves: &m
     }
 
     // rightward bound check
-    if offset % 8 == 1 && index % 8 == 7 {
+    if (offset % 8 == 1 || offset % 8 == -7) && index % 8 == 7 {
         return;
     }
 
     // leftward bound check
-    if offset % 8 == 7 && index % 8 == 0 {
+    if (offset % 8 == 7 || offset % 8 == -1) && index % 8 == 0 {
         return;
     }
 
