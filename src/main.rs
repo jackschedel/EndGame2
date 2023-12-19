@@ -254,6 +254,7 @@ struct CastlingRights {
 #[derive(Clone)]
 struct PositionTree {
     nodes: Vec<PositionTreeNode>,
+    move_depths: Vec<usize>,
     depth: u8,
 }
 
@@ -262,6 +263,7 @@ struct PositionTreeNode {
     // parent for 0th index in nodes doesn't matter, will always be root
     // using option here would be inefficient
     parent: usize,
+    top_parent: usize,
     position: Position,
     children: Vec<usize>,
     halfmove: Option<HalfMove>,
@@ -271,6 +273,7 @@ impl PositionTree {
     fn from_pos(position: Position) -> Self {
         Self {
             nodes: vec![PositionTreeNode::root_node(position)],
+            move_depths: vec![],
             depth: 0,
         }
     }
@@ -286,51 +289,30 @@ impl PositionTree {
                 parent: index,
                 position: positions[i].clone(),
                 children: Vec::new(),
+                top_parent: if index == 0 {
+                    i
+                } else {
+                    self.nodes[index].top_parent
+                },
                 halfmove: Some(moves[i].clone()),
             };
             let curr_size = self.nodes.len();
             self.nodes[index].children.push(curr_size);
             self.nodes.push(child_node);
         }
-    }
-
-    fn disp_move_counts(&self) {
-        let mut children_with_moves: Vec<(usize, String)> = self.nodes[0]
-            .children
-            .iter()
-            .map(|&child_index| {
-                let move_coords = self.nodes[child_index].halfmove.unwrap().move_to_coords();
-                (child_index, move_coords)
-            })
-            .collect();
-        children_with_moves.sort_by(|a, b| a.1.cmp(&b.1));
-        for &(child_index, ref move_coords) in children_with_moves.iter() {
-            let move_count = self.clone().count_children(child_index);
-            println!("{}: {}", move_coords, move_count);
+        if index != 0 {
+            self.move_depths[self.nodes[index].top_parent] += positions.len();
         }
     }
 
-    fn count_children(self, index: usize) -> u32 {
-        // note: relative depth
-        let mut count: u32 = 0;
-        let mut queue: VecDeque<usize> = VecDeque::new();
-
-        // None = new depth
-        queue.push_back(index);
-
-        while !queue.is_empty() {
-            let current = queue.pop_front().unwrap();
-
-            if self.nodes[current].children.is_empty() {
-                count += 1;
-            } else {
-                for i in self.nodes[current].children.iter() {
-                    queue.push_back(*i);
-                }
-            }
+    fn disp_perft_results(&self) {
+        for i in 0..self.move_depths.len() {
+            print!(
+                "{}: {}\n",
+                self.nodes[i + 1].halfmove.unwrap().move_to_coords(),
+                self.move_depths[i]
+            );
         }
-
-        return count;
     }
 
     fn increase_depth(&mut self) -> usize {
@@ -342,7 +324,14 @@ impl PositionTree {
 
         if self.nodes.len() == 1 {
             self.gen_children(0);
+            for _ in 1..self.nodes.len() {
+                self.move_depths.push(0);
+            }
             return self.nodes.len() - 1;
+        } else {
+            for i in 0..self.move_depths.len() {
+                self.move_depths[i] = 1;
+            }
         }
 
         let prev_len = self.nodes.len();
@@ -361,6 +350,7 @@ impl PositionTreeNode {
     fn root_node(position: Position) -> Self {
         Self {
             parent: 0,
+            top_parent: 0,
             position,
             children: Vec::new(),
             halfmove: None,
@@ -1546,7 +1536,7 @@ fn gen_position_tree(position: Position, depth: u8) {
         possible_moves = tree.increase_depth();
     }
 
-    tree.disp_move_counts();
+    tree.disp_perft_results();
 
     println!("\nNodes searched: {}", possible_moves);
 }
