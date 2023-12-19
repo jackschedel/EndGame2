@@ -325,12 +325,12 @@ impl PositionTree {
         if self.nodes.len() == 1 {
             self.gen_children(0);
             for _ in 1..self.nodes.len() {
-                self.move_depths.push(0);
+                self.move_depths.push(1);
             }
             return self.nodes.len() - 1;
         } else {
             for i in 0..self.move_depths.len() {
-                self.move_depths[i] = 1;
+                self.move_depths[i] = 0;
             }
         }
 
