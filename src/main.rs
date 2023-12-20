@@ -644,8 +644,8 @@ fn main() {
 
     let position_cmd =
         "position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 1 0";
-    handle_command(position_cmd.to_string(), &shared_flags);
-    handle_command("go perft 3".to_string(), &shared_flags);
+    print_handle_command(position_cmd.to_string(), &shared_flags);
+    print_handle_command("go perft 3".to_string(), &shared_flags);
 
     // print_index_reference();
 
@@ -684,6 +684,10 @@ fn handle_cli_input(shared_flags: Arc<Mutex<SharedFlags>>) {
     }
 }
 
+fn print_handle_command(input: String, shared_flags: &Arc<Mutex<SharedFlags>>) {
+    println!("{}", input);
+    handle_command(input, shared_flags);
+}
 fn handle_command(input: String, shared_flags: &Arc<Mutex<SharedFlags>>) {
     let mut command = input.trim().split_whitespace();
     if let Some(word) = command.next() {
@@ -759,6 +763,13 @@ fn position_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Shar
     match token1 {
         Some("startpos") => {
             set_board_from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR", shared_flags);
+            let token2 = command.next();
+            if token2 == None {
+                return;
+            } else if token2.unwrap() != "moves" {
+                println!("Error - expected moves token, got {}!", token2.unwrap());
+                return;
+            }
         }
         Some("fen") => {
             let fen = command.next().unwrap();
@@ -766,15 +777,6 @@ fn position_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Shar
             set_flags_from_fen(command, shared_flags)
         }
         _ => println!("Position command improperly formatted!"),
-    }
-
-    let token2 = command.next();
-
-    if token2 == None {
-        return;
-    } else if token2.unwrap() != "moves" {
-        println!("Error - expected moves token, got {}!", token2.unwrap());
-        return;
     }
 
     handle_move_tokens(command, shared_flags);
@@ -1032,13 +1034,8 @@ fn string_to_halfmove(
                     return None;
                 }
             }
-        } else if is_capture {
+        } else if board[coord1 as usize].unwrap().is_pawn() {
             // pawn captures
-
-            if board[coord1 as usize] == None || !board[coord1 as usize].unwrap().is_pawn() {
-                println!("Error - no pawn at {}!", coord1_str);
-                return None;
-            }
 
             let file_diff = (coord1 % 8).abs_diff(coord2 % 8);
 
@@ -1163,8 +1160,14 @@ fn set_flags_from_fen(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Sh
             shared_flags.lock().unwrap().position.en_passant_target = en_passant_target;
         }
     }
+    let next_token = command.next();
 
-    if let Some(halfmove_clock_token) = command.next() {
+    if next_token == None {
+        return;
+    } else if next_token.unwrap() == "moves" {
+        return;
+    } else {
+        let halfmove_clock_token = next_token.unwrap();
         match halfmove_clock_token.parse::<u16>() {
             Ok(value) => {
                 if value > 100 {
