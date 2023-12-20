@@ -642,10 +642,9 @@ fn main() {
     // https://www.chessprogramming.org/Perft_Results Position 5
     //let position_cmd = "position fen rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
 
-    let position_cmd =
-        "position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 1 0";
+    let position_cmd = "position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 1 0 moves e1g1 h3g2";
     print_handle_command(position_cmd.to_string(), &shared_flags);
-    print_handle_command("go perft 3".to_string(), &shared_flags);
+    print_handle_command("go perft 1".to_string(), &shared_flags);
 
     // print_index_reference();
 
@@ -1597,6 +1596,10 @@ fn gen_possible(position: &mut Position) -> (Vec<Position>, Vec<HalfMove>) {
             king_pos = positions[i].piece_set.black_king;
         }
 
+        if moves[i].move_to_coords() == "g1h1" {
+            print!("test");
+        }
+
         if is_piece_attacked(king_pos, position.move_next, &positions[i]) {
             positions.remove(i);
             moves.remove(i);
@@ -1835,13 +1838,13 @@ fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool
     // pawn checks (not counting en-passant)
     if opp_color == Color::White && index > 7 {
         if index % 8 > 0 {
-            if position.board[(index as i8 - 7) as usize] == Some(Piece::Pawn(opp_color)) {
+            if position.board[(index as i8 - 9) as usize] == Some(Piece::Pawn(opp_color)) {
                 return true;
             }
         }
 
         if index % 8 < 7 {
-            if position.board[(index as i8 - 9) as usize] == Some(Piece::Pawn(opp_color)) {
+            if position.board[(index as i8 - 7) as usize] == Some(Piece::Pawn(opp_color)) {
                 return true;
             }
         }
@@ -1849,13 +1852,13 @@ fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool
 
     if opp_color == Color::Black && index < 56 {
         if index % 8 > 0 {
-            if position.board[(index as i8 + 9) as usize] == Some(Piece::Pawn(opp_color)) {
+            if position.board[(index as i8 + 7) as usize] == Some(Piece::Pawn(opp_color)) {
                 return true;
             }
         }
 
         if index % 8 < 7 {
-            if position.board[(index as i8 + 7) as usize] == Some(Piece::Pawn(opp_color)) {
+            if position.board[(index as i8 + 9) as usize] == Some(Piece::Pawn(opp_color)) {
                 return true;
             }
         }
