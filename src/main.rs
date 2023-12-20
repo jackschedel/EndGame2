@@ -643,9 +643,9 @@ fn main() {
     //let position_cmd = "position fen rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
 
     let position_cmd =
-        "position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+        "position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 1 0";
     handle_command(position_cmd.to_string(), &shared_flags);
-    // handle_command("go perft 1".to_string(), &shared_flags);
+    handle_command("go perft 3".to_string(), &shared_flags);
 
     // print_index_reference();
 
@@ -1933,7 +1933,7 @@ fn gen_pseudolegal_moves(position: &Position) -> Vec<HalfMove> {
             }
         }
 
-        if position.castling_rights.white.queenside {
+        if position.castling_rights.white.kingside {
             if position.board[7] == Some(Piece::Rook(Color::White))
                 && position.board[6] == None
                 && position.board[5] == None
