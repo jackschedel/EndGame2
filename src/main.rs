@@ -1192,6 +1192,16 @@ fn set_flags_from_fen(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Sh
             }
         }
     }
+
+    let next_token = command.next();
+
+    if next_token == None {
+        return;
+    } else if next_token.unwrap() == "moves" {
+        return;
+    }
+
+    println!("Expected token 'moves', found: {}", next_token.unwrap());
 }
 
 fn coord_to_int(coord: &str) -> u8 {
