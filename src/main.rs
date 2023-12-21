@@ -562,73 +562,9 @@ fn main() {
         handle_cli_input(shared_flags_clone);
     });
 
-    // Main program logic
+    // start commands
     print_handle_command("uci".to_string(), &shared_flags);
-
     print_handle_command("debug on".to_string(), &shared_flags);
-
-    // general FEN loading
-    //let position_cmd = "position fen 8/8/4k3/1p2p2p/PPpn3P/2N4r/5K2/2R5 b - - 2 53 moves Nd4b3";
-
-    // general moving around
-    //let position_cmd = "position startpos moves e2e4 e7e5 Ng1f3 Nb8c6 Bf1b5 a7a6 Bb5xc6 d7xc6 e1h1 f7f6 d2d4";
-
-    // en passant
-    //let position_cmd = "position fen k7/4p2p/8/8/8/8/3P4/K7 w - - 0 1 moves d2d4 h7h6 d4d5 e7e5 d5xe6";
-
-    // en passant -1
-    // let position_cmd = "position fen k7/4p2p/8/8/8/8/3P4/K7 w - - 0 1 moves d2d4 h7h6 d4d5 e7e5";
-
-    // en passant -1 lose flag
-    // let position_cmd = "position fen k7/4p2p/8/8/8/8/3P4/K7 w - - 0 1 moves d2d4 e7e5 d4d5 h7h6";
-
-    // castling kingside
-    //let position_cmd = "position startpos moves g2g3 Ng8f6 Ng1f3 Nf6g8 Bf1g2 Ng8f6 e1h1 g7g6 Nf3e1 Bf8g7 Ne1f3 e8h8";
-
-    // castling queenside
-    //let position_cmd = "position startpos moves e2e3 e7e6 Qd1e2 Qd8e7 d2d3 d7d6 Bc1d2 Bc8d7 Nb1c3 Nb8c6 e1a1 e8a8";
-
-    // castle setup
-    // let position_cmd = "position fen r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1";
-
-    // legality/check testing
-    // let position_cmd = "position startpos moves d2d3 e7e6 Ke1d2 Qd8g5";
-
-    // startpos
-    //let position_cmd = "position startpos";
-
-    // startpos+1
-    //let position_cmd = "position startpos moves e2e3";
-
-    // https://www.chessprogramming.org/Perft_Results Position 5
-    //let position_cmd = "position fen rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
-
-    // let position_cmd = "position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 1 0 moves e1g1 h3g2";
-    // print_handle_command(position_cmd.to_string(), &shared_flags);
-    // print_handle_command("go perft 1".to_string(), &shared_flags);
-
-    // print_index_reference();
-
-    /*
-    thread::spawn(move ||  {
-        loop {
-            // print value of DEBUG_ENABLED
-            println!("debug enabled: {}", shared_flags_clone.lock().unwrap().debug_enabled);
-
-            // print value of UCI_ENABLED
-            println!("uci enabled: {}", shared_flags_clone.lock().unwrap().uci_enabled);
-
-            // print value of REGISTRATION_NAME
-            println!("registration name: {}", shared_flags_clone.lock().unwrap().registration_name);
-
-            // print value of REGISTRATION_CODE
-            println!("registration code: {}", shared_flags_clone.lock().unwrap().registration_code);
-
-            // Sleep for a while to simulate other work
-            thread::sleep(std::time::Duration::from_secs(5));
-        }
-    });
-     */
 
     let shared_flags_clone = Arc::clone(&shared_flags);
     while !shared_flags_clone.lock().unwrap().can_quit {
