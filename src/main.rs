@@ -1,11 +1,8 @@
 use hashbrown::HashSet;
-use std::collections::VecDeque;
 use std::io::{self, BufRead};
 use std::str::SplitWhitespace;
 use std::sync::{Arc, Mutex};
 use std::{fmt, thread};
-
-const GLOBAL_DEPTH: u8 = 4;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum Color {
@@ -44,48 +41,12 @@ impl Color {
 }
 
 impl Piece {
-    fn is_white(&self) -> bool {
-        match *self {
-            Piece::Pawn(Color::White)
-            | Piece::Knight(Color::White)
-            | Piece::Bishop(Color::White)
-            | Piece::Rook(Color::White)
-            | Piece::Queen(Color::White)
-            | Piece::King(Color::White) => true,
-            _ => false,
-        }
-    }
-
-    fn is_black(&self) -> bool {
-        match *self {
-            Piece::Pawn(Color::Black)
-            | Piece::Knight(Color::Black)
-            | Piece::Bishop(Color::Black)
-            | Piece::Rook(Color::Black)
-            | Piece::Queen(Color::Black)
-            | Piece::King(Color::Black) => true,
-            _ => false,
-        }
-    }
-
     fn is_pawn(&self) -> bool {
         matches!(self, Piece::Pawn(_))
     }
 
-    fn is_knight(&self) -> bool {
-        matches!(self, Piece::Knight(_))
-    }
-
-    fn is_bishop(&self) -> bool {
-        matches!(self, Piece::Bishop(_))
-    }
-
     fn is_rook(&self) -> bool {
         matches!(self, Piece::Rook(_))
-    }
-
-    fn is_queen(&self) -> bool {
-        matches!(self, Piece::Queen(_))
     }
 
     fn is_king(&self) -> bool {
@@ -420,7 +381,7 @@ impl Position {
                 fen += &format!("{}", piece_to_char(self.board[index as usize], false));
             }
 
-            for j in 0..7 {
+            for _ in 0..7 {
                 index += 1;
                 if self.board[index as usize] == None {
                     blank_count += 1;
@@ -602,9 +563,9 @@ fn main() {
     });
 
     // Main program logic
-    handle_command("uci".to_string(), &shared_flags);
+    print_handle_command("uci".to_string(), &shared_flags);
 
-    handle_command("debug on".to_string(), &shared_flags);
+    print_handle_command("debug on".to_string(), &shared_flags);
 
     // general FEN loading
     //let position_cmd = "position fen 8/8/4k3/1p2p2p/PPpn3P/2N4r/5K2/2R5 b - - 2 53 moves Nd4b3";
@@ -740,7 +701,7 @@ fn uci_command(shared_flags: &Arc<Mutex<SharedFlags>>) {
 
     id_send(shared_flags);
 
-    option_send(shared_flags);
+    option_send();
 
     println!("uciok");
 }
@@ -750,7 +711,7 @@ fn id_send(shared_flags: &Arc<Mutex<SharedFlags>>) {
     println!("id author Koala");
 }
 
-fn option_send(shared_flags: &Arc<Mutex<SharedFlags>>) {
+fn option_send() {
     println!("option name DebugIndexes type check default true");
     println!("option name DebugSetsDisplay type check default false");
     println!("option name DebugUseSymbols type check default false");
@@ -953,8 +914,6 @@ fn string_to_halfmove(
 
     let mut char_index = 0;
 
-    let mut is_capture = false;
-
     match move_string.chars().nth(0) {
         Some('N') | Some('B') | Some('R') | Some('Q') | Some('K') => {
             is_pieceless_move = false;
@@ -975,7 +934,6 @@ fn string_to_halfmove(
         char_index += 1;
     } else if coord_separator == 'x' {
         char_index += 1;
-        is_capture = true;
     }
 
     let coord2_str: String = move_string.chars().skip(char_index).take(2).collect();
@@ -1983,8 +1941,6 @@ fn gen_piece_pseudolegal_moves(piece_index: u8, position: &Position) -> Vec<Half
         Some(Piece::King(_)) => return gen_king_pseudolegal_moves(piece_index, position),
         None => panic!("Error, index contained in piece_set has no piece on board!"),
     }
-
-    return Vec::new();
 }
 
 fn gen_rook_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
@@ -2048,8 +2004,6 @@ fn gen_queen_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> 
 
 fn gen_knight_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
     let mut moves: Vec<HalfMove> = Vec::new();
-
-    let board = position.board;
 
     // total of 8 move combinations
 
