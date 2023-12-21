@@ -581,7 +581,7 @@ fn handle_cli_input(shared_flags: Arc<Mutex<SharedFlags>>) {
 }
 
 fn print_handle_command(input: String, shared_flags: &Arc<Mutex<SharedFlags>>) {
-    println!("{}", input);
+    println!("> {}", input);
     handle_command(input, shared_flags);
 }
 fn handle_command(input: String, shared_flags: &Arc<Mutex<SharedFlags>>) {
@@ -1429,7 +1429,44 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
                 println!("Error: Depth not specified for perft command!");
             }
         }
+        None => {
+            println!("Eval: {}", position_eval(position));
+        }
         _ => println!("Go command improperly formatted!"),
+    }
+}
+
+fn position_eval(position: Position) -> f32 {
+    let mut eval = 0.0;
+    for i in position.piece_set.white {
+        eval += get_piece_value(position.board[i as usize].unwrap());
+    }
+    for i in position.piece_set.black {
+        eval -= get_piece_value(position.board[i as usize].unwrap());
+    }
+    return eval;
+}
+
+fn get_piece_value(piece: Piece) -> f32 {
+    match piece {
+        Piece::Pawn(_) => {
+            return 1.0;
+        }
+        Piece::Bishop(_) => {
+            return 3.0;
+        }
+        Piece::Knight(_) => {
+            return 3.0;
+        }
+        Piece::Rook(_) => {
+            return 5.0;
+        }
+        Piece::Queen(_) => {
+            return 9.0;
+        }
+        Piece::King(_) => {
+            return 0.0;
+        }
     }
 }
 
