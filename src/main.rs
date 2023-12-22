@@ -1436,38 +1436,84 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
     }
 }
 
-fn position_eval(position: Position) -> f32 {
-    let mut eval = 0.0;
+fn position_eval(position: Position) -> i32 {
+    let mut eval = 0;
     for i in position.piece_set.white {
-        eval += get_piece_value(position.board[i as usize].unwrap());
+        eval += get_piece_value(position.board[i as usize].unwrap(), i);
     }
     for i in position.piece_set.black {
-        eval -= get_piece_value(position.board[i as usize].unwrap());
+        eval -= get_piece_value(position.board[i as usize].unwrap(), i);
     }
     return eval;
 }
 
-fn get_piece_value(piece: Piece) -> f32 {
+fn get_piece_value(piece: Piece, index: u8) -> i32 {
+    let mut value;
+    let pawn_table = [
+        0, 0, 0, 0, 0, 0, 0, 0, 30, 30, 30, 40, 40, 30, 30, 30, 20, 20, 20, 30, 30, 30, 20, 20, 10,
+        10, 15, 25, 25, 15, 10, 10, 5, 5, 5, 20, 20, 5, 5, 5, 5, 0, 0, 5, 5, 0, 0, 5, 5, 5, 5, -10,
+        -10, 5, 5, 5, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let knight_table = [
+        -5, -5, -5, -5, -5, -5, -5, -5, -5, 0, 0, 10, 10, 0, 0, -5, -5, 5, 10, 10, 10, 10, 5, -5,
+        -5, 5, 10, 15, 15, 10, 5, -5, -5, 5, 10, 15, 15, 10, 5, -5, -5, 5, 10, 10, 10, 10, 5, -5,
+        -5, 0, 0, 5, 5, 0, 0, -5, -5, -10, -5, -5, -5, -5, -10, -5,
+    ];
+    let bishop_table = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0,
+        10, 0, 5, 0, 10, 0, 0, 10, 0, 5, 0, 10, 0, 10, 10, 0, 10, 0, 0, 10, 0, 10, 10, 0, 10, 0, 0,
+        0, -10, 0, 0, -10, 0, 0,
+    ];
+    let rook_table = [
+        10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 10, 0, 0,
+        0, 0, 0, 0, 10, 10, 5, 0, 0,
+    ];
+    let queen_table = [
+        -20, -10, -10, -5, -5, -10, -10, -20, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 5, 5, 5, 5, 0,
+        -10, -5, 0, 5, 5, 5, 5, 0, -5, -5, 0, 5, 5, 5, 5, 0, -5, -10, 5, 5, 5, 5, 5, 0, -10, -10,
+        0, 5, 0, 0, 0, 0, -10, -20, -10, -10, 0, 0, -10, -10, -20,
+    ];
+    let king_table = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -5, -5, -5, 0, 0, 0, 0, 10,
+        -5, -5, -5, 10, 0,
+    ];
+
+    let pos = if piece.get_color() == Color::White {
+        (63 - index) as usize
+    } else {
+        index as usize
+    };
+
     match piece {
         Piece::Pawn(_) => {
-            return 1.0;
+            value = 100;
+            value += pawn_table[pos];
         }
         Piece::Bishop(_) => {
-            return 3.0;
+            value = 320;
+            value += bishop_table[pos];
         }
         Piece::Knight(_) => {
-            return 3.0;
+            value = 290;
+            value += knight_table[pos];
         }
         Piece::Rook(_) => {
-            return 5.0;
+            value = 490;
+            value += rook_table[pos];
         }
         Piece::Queen(_) => {
-            return 9.0;
+            value = 900;
+            value += queen_table[pos];
         }
         Piece::King(_) => {
-            return 0.0;
+            value = 80000;
+            value += king_table[pos];
         }
     }
+
+    return value;
 }
 
 fn gen_position_tree(position: Position, depth: u8) {
