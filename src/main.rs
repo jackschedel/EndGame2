@@ -1,4 +1,5 @@
 use hashbrown::HashSet;
+use std::collections::VecDeque;
 use std::io::{self, BufRead};
 use std::str::SplitWhitespace;
 use std::sync::{Arc, Mutex};
@@ -228,6 +229,7 @@ struct PositionTreeNode {
     position: Position,
     children: Vec<usize>,
     halfmove: Option<HalfMove>,
+    evaluation: i32,
 }
 
 impl PositionTree {
@@ -239,17 +241,52 @@ impl PositionTree {
         }
     }
 
-    fn gen_children(&mut self, index: usize) {
-        let genned = gen_possible(&mut self.nodes[index].position);
+    fn print_tree(&self) {
+        let mut queue = VecDeque::new();
+        let mut current_depth: u8 = 0;
+        let mut last_parent: usize = 0;
+
+        queue.push_back((0, 0));
+
+        while let Some((index, depth)) = queue.pop_front() {
+            if depth != current_depth {
+                println!();
+                println!();
+                current_depth = depth;
+            } else if self.nodes[index].parent != last_parent {
+                print!(" - ");
+            }
+
+            print!("{}", index);
+            last_parent = self.nodes[index].parent;
+
+            for &child_index in &self.nodes[index].children {
+                queue.push_back((child_index, depth + 1));
+            }
+
+            if let Some(&(next_index, _)) = queue.front() {
+                if self.nodes[next_index].parent == last_parent {
+                    print!(" ");
+                }
+            }
+        }
+
+        println!();
+    }
+
+    fn gen_children(&mut self, index: usize, is_perft: bool) {
+        let genned = gen_possible(&mut self.nodes[index].position, is_perft);
 
         let positions = genned.0;
         let moves = genned.1;
+        let evaluations = genned.2;
 
         for i in 0..positions.len() {
             let child_node = PositionTreeNode {
                 parent: index,
                 position: positions[i].clone(),
                 children: Vec::new(),
+                evaluation: evaluations[i],
                 top_parent: if index == 0 {
                     i
                 } else {
@@ -276,7 +313,7 @@ impl PositionTree {
         }
     }
 
-    fn increase_depth(&mut self) -> usize {
+    fn increase_depth(&mut self, is_perft: bool) -> usize {
         if self.nodes.len() == 0 {
             return 0;
         }
@@ -284,7 +321,7 @@ impl PositionTree {
         self.depth += 1;
 
         if self.nodes.len() == 1 {
-            self.gen_children(0);
+            self.gen_children(0, is_perft);
             for _ in 1..self.nodes.len() {
                 self.move_depths.push(1);
             }
@@ -300,7 +337,7 @@ impl PositionTree {
         let oldest_ungenned: usize = self.nodes.last().unwrap().parent + 1;
 
         for i in oldest_ungenned..self.nodes.len() {
-            self.gen_children(i);
+            self.gen_children(i, is_perft);
         }
 
         return self.nodes.len() - prev_len;
@@ -315,8 +352,11 @@ impl PositionTreeNode {
             position,
             children: Vec::new(),
             halfmove: None,
+            evaluation: 0,
         }
     }
+
+    fn print_node(self) {}
 }
 
 impl fmt::Debug for PositionTree {
@@ -1422,7 +1462,7 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
         Some("perft") => {
             if let Some(token2) = command.next() {
                 match token2.parse::<u8>() {
-                    Ok(depth) => gen_position_tree(position, depth),
+                    Ok(depth) => perft_command(position, depth),
                     Err(_) => println!("Error: Depth must be a valid number!"),
                 }
             } else {
@@ -1430,18 +1470,28 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
             }
         }
         None => {
-            println!("Eval: {}", position_eval(position));
+            minimax_search(position);
         }
         _ => println!("Go command improperly formatted!"),
     }
 }
 
-fn position_eval(position: Position) -> i32 {
+fn minimax_search(position: Position) {
+    let mut tree = PositionTree::from_pos(position);
+
+    tree.increase_depth(false);
+
+    tree.increase_depth(false);
+
+    tree.print_tree();
+}
+
+fn position_eval(position: &Position) -> i32 {
     let mut eval = 0;
-    for i in position.piece_set.white {
+    for &i in position.piece_set.white.iter() {
         eval += get_piece_value(position.board[i as usize].unwrap(), i);
     }
-    for i in position.piece_set.black {
+    for &i in position.piece_set.black.iter() {
         eval -= get_piece_value(position.board[i as usize].unwrap(), i);
     }
     return eval;
@@ -1516,13 +1566,13 @@ fn get_piece_value(piece: Piece, index: u8) -> i32 {
     return value;
 }
 
-fn gen_position_tree(position: Position, depth: u8) {
+fn perft_command(position: Position, depth: u8) {
     let mut tree = PositionTree::from_pos(position);
 
-    let mut possible_moves = tree.increase_depth();
+    let mut possible_moves = tree.increase_depth(true);
 
     for _ in 1..(depth) {
-        possible_moves = tree.increase_depth();
+        possible_moves = tree.increase_depth(true);
     }
 
     tree.disp_perft_results();
@@ -1530,9 +1580,13 @@ fn gen_position_tree(position: Position, depth: u8) {
     println!("\nNodes searched: {}", possible_moves);
 }
 
-fn gen_possible(position: &mut Position) -> (Vec<Position>, Vec<HalfMove>) {
+fn gen_possible(
+    position: &mut Position,
+    is_perft: bool,
+) -> (Vec<Position>, Vec<HalfMove>, Vec<i32>) {
     let mut moves: Vec<HalfMove>;
     let mut positions: Vec<Position> = Vec::new();
+    let mut evaluations: Vec<i32> = Vec::new();
 
     let king_pos: u8;
 
@@ -1573,15 +1627,21 @@ fn gen_possible(position: &mut Position) -> (Vec<Position>, Vec<HalfMove>) {
             king_pos = positions[i].piece_set.black_king;
         }
 
-        if is_piece_attacked(king_pos, position.move_next, &positions[i]) {
-            positions.remove(i);
-            moves.remove(i);
-        }
+        if is_perft {
+            if is_piece_attacked(king_pos, position.move_next, &positions[i]) {
+                positions.remove(i);
+                moves.remove(i);
+            } else {
+                evaluations.push(0);
+            }
+        } else {
+            let eval = position_eval(&positions[i]);
 
-        // consider refactoring method out to be used for future attack checks
+            evaluations.push(eval);
+        }
     }
 
-    return (positions, moves);
+    return (positions, moves, evaluations);
 }
 
 fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool {
