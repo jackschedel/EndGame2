@@ -644,14 +644,10 @@ fn main() {
         handle_cli_input(shared_flags_clone);
     });
 
-    // start commands
+    // start main program
     print_handle_command("uci".to_string(), &shared_flags);
-    print_handle_command("debug on".to_string(), &shared_flags);
-    print_handle_command(
-        "position fen 8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - ".to_string(),
-        &shared_flags,
-    );
-    print_handle_command("go".to_string(), &shared_flags);
+    handle_command("position startpos".to_string(), &shared_flags);
+    // print_handle_command("debug on".to_string(), &shared_flags);
 
     let shared_flags_clone = Arc::clone(&shared_flags);
     while !shared_flags_clone.lock().unwrap().can_quit {
@@ -1509,7 +1505,7 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
         Some("perft") => {
             if let Some(token2) = command.next() {
                 match token2.parse::<u8>() {
-                    Ok(depth) => perft_command(position, depth),
+                    Ok(depth) => perft_command(position, depth, shared_flags),
                     Err(_) => println!("Error: Depth must be a valid number!"),
                 }
             } else {
@@ -1663,7 +1659,7 @@ fn get_piece_value(piece: Piece, index: u8) -> i32 {
     return value;
 }
 
-fn perft_command(position: Position, depth: u8) {
+fn perft_command(position: Position, depth: u8, shared_flags: &Arc<Mutex<SharedFlags>>) {
     let mut tree = PositionTree::from_pos(position);
 
     let mut possible_moves = tree.increase_depth(true);
@@ -1675,6 +1671,10 @@ fn perft_command(position: Position, depth: u8) {
     tree.disp_perft_results();
 
     println!("\nNodes searched: {}", possible_moves);
+
+    if shared_flags.lock().unwrap().debug_enabled {
+        tree.print_tree()
+    }
 }
 
 fn gen_possible(
