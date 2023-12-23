@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use std::io::{self, BufRead};
 use std::str::SplitWhitespace;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use std::{fmt, thread};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -1525,30 +1526,37 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
 fn go_search(position: Position) {
     let mut tree = PositionTree::from_pos(position);
 
-    for _ in 0..(5) {
+    let mut moves;
+    let mut score;
+    let mut depth = 0;
+    let start_time = Instant::now();
+
+    loop {
         tree.increase_depth(false);
-    }
-
-    // tree.print_tree();
-
-    minimax_search(&tree);
-}
-
-fn minimax_search(tree: &PositionTree) {
-    println!();
-    println!();
-    let (score, moves) = minimax(tree, 0, true);
-
-    println!("Score: {}", score);
-    print!("Moves: root -> ");
-
-    for i in 1..moves.len() {
-        print!("{}", moves[i].move_to_coords());
-        if i != moves.len() - 1 {
-            print!(" -> ");
+        (score, moves) = minimax(&tree, 0, true);
+        depth += 1;
+        if start_time.elapsed() >= Duration::new(8, 0) {
+            break;
         }
     }
-    println!();
+
+    print!("info depth {} score cp {} ", depth, score);
+
+    print_pv(&moves);
+
+    println!(
+        "bestmove {} ponder {}",
+        moves[1].move_to_coords(),
+        moves[2].move_to_coords()
+    );
+}
+
+fn print_pv(moves: &Vec<HalfMove>) {
+    print!("pv ");
+
+    for i in 1..moves.len() {
+        print!("{} ", moves[i].move_to_coords());
+    }
     println!();
 }
 
