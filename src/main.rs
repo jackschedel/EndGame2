@@ -3,7 +3,6 @@ use std::collections::VecDeque;
 use std::io::{self, BufRead};
 use std::str::SplitWhitespace;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 use std::{fmt, thread};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -223,7 +222,7 @@ struct PositionTree {
 
 #[derive(Clone)]
 struct PositionTreeNode {
-    // parent for 0th index in nodes doesn't matter, will always be root
+    // parent, top_parent, and halfmove for 0th index in nodes don't matter.
     // using option here would be inefficient
     parent: usize,
     top_parent: usize,
@@ -1517,22 +1516,63 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
             }
         }
         None => {
-            minimax_search(position);
+            go_search(position);
         }
         _ => println!("Go command improperly formatted!"),
     }
 }
 
-fn minimax_search(position: Position) {
+fn go_search(position: Position) {
     let mut tree = PositionTree::from_pos(position);
 
-    let start = Instant::now();
-    for _ in 0..(2) {
+    for _ in 0..(5) {
         tree.increase_depth(false);
     }
-    let duration = start.elapsed();
-    println!("Time elapsed is: {} ms", duration.as_millis());
-    tree.print_tree();
+
+    // tree.print_tree();
+
+    minimax_search(&tree);
+}
+
+fn minimax_search(tree: &PositionTree) {
+    println!();
+    println!();
+    let (score, moves) = minimax(tree, 0, true);
+
+    println!("Score: {}", score);
+    print!("Moves: root -> ");
+
+    for i in 1..moves.len() {
+        print!("{}", moves[i].move_to_coords());
+        if i != moves.len() - 1 {
+            print!(" -> ");
+        }
+    }
+    println!();
+    println!();
+}
+
+fn minimax(tree: &PositionTree, node_index: usize, is_maximizing: bool) -> (i32, Vec<HalfMove>) {
+    let node = &tree.nodes[node_index];
+
+    if node.children.is_empty() {
+        return (node.evaluation, vec![node.halfmove.clone()]);
+    }
+
+    let mut best_score = if is_maximizing { i32::MIN } else { i32::MAX };
+    let mut best_path = Vec::new();
+
+    for &child_index in &node.children {
+        let (child_score, mut child_path) = minimax(tree, child_index, !is_maximizing);
+
+        if is_maximizing && child_score > best_score || !is_maximizing && child_score < best_score {
+            best_score = child_score;
+            child_path.insert(0, node.halfmove.clone());
+            best_path = child_path;
+        }
+    }
+
+    return (best_score, best_path);
 }
 
 fn position_eval(position: &Position) -> i32 {
