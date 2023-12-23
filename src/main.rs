@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use std::io::{self, BufRead};
 use std::str::SplitWhitespace;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use std::{fmt, thread};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -228,7 +229,7 @@ struct PositionTreeNode {
     top_parent: usize,
     position: Position,
     children: Vec<usize>,
-    halfmove: Option<HalfMove>,
+    halfmove: HalfMove,
     evaluation: i32,
 }
 
@@ -242,6 +243,33 @@ impl PositionTree {
     }
 
     fn print_tree(&self) {
+        self.print_tree_structure();
+        self.print_tree_nodes();
+    }
+
+    fn print_tree_nodes(&self) {
+        println!();
+        let max_index = self.nodes.len();
+        let digits = if max_index == 0 {
+            1
+        } else {
+            (max_index as f64).log10().ceil() as usize
+        };
+
+        for i in 0..max_index {
+            print!("{:>width$}: ", i, width = digits);
+            self.nodes[i].clone().print_node();
+            if (i + 1) % 8 != 0 {
+                print!("| ");
+            } else {
+                println!();
+            }
+        }
+    }
+
+    fn print_tree_structure(&self) {
+        println!();
+
         let mut queue = VecDeque::new();
         let mut current_depth: u8 = 0;
         let mut last_parent: usize = 0;
@@ -292,7 +320,7 @@ impl PositionTree {
                 } else {
                     self.nodes[index].top_parent
                 },
-                halfmove: Some(moves[i].clone()),
+                halfmove: moves[i].clone(),
             };
             let curr_size = self.nodes.len();
             self.nodes[index].children.push(curr_size);
@@ -307,7 +335,7 @@ impl PositionTree {
         for i in 0..self.move_depths.len() {
             print!(
                 "{}: {}\n",
-                self.nodes[i + 1].halfmove.unwrap().move_to_coords(),
+                self.nodes[i + 1].halfmove.move_to_coords(),
                 self.move_depths[i]
             );
         }
@@ -351,12 +379,26 @@ impl PositionTreeNode {
             top_parent: 0,
             position,
             children: Vec::new(),
-            halfmove: None,
+            halfmove: HalfMove {
+                from: 0,
+                to: 0,
+                flag: None,
+            },
             evaluation: 0,
         }
     }
 
-    fn print_node(self) {}
+    fn print_node(self) {
+        if self.halfmove.to == 0 && self.halfmove.from == 0 {
+            print!("root        ");
+        } else {
+            print!(
+                "{} -> {: >4}",
+                self.halfmove.move_to_coords(),
+                self.evaluation
+            );
+        }
+    }
 }
 
 impl fmt::Debug for PositionTree {
@@ -605,6 +647,11 @@ fn main() {
     // start commands
     print_handle_command("uci".to_string(), &shared_flags);
     print_handle_command("debug on".to_string(), &shared_flags);
+    print_handle_command(
+        "position fen 8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - ".to_string(),
+        &shared_flags,
+    );
+    print_handle_command("go".to_string(), &shared_flags);
 
     let shared_flags_clone = Arc::clone(&shared_flags);
     while !shared_flags_clone.lock().unwrap().can_quit {
@@ -1479,10 +1526,12 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
 fn minimax_search(position: Position) {
     let mut tree = PositionTree::from_pos(position);
 
-    tree.increase_depth(false);
-
-    tree.increase_depth(false);
-
+    let start = Instant::now();
+    for _ in 0..(2) {
+        tree.increase_depth(false);
+    }
+    let duration = start.elapsed();
+    println!("Time elapsed is: {} ms", duration.as_millis());
     tree.print_tree();
 }
 
@@ -1627,17 +1676,13 @@ fn gen_possible(
             king_pos = positions[i].piece_set.black_king;
         }
 
-        if is_perft {
-            if is_piece_attacked(king_pos, position.move_next, &positions[i]) {
-                positions.remove(i);
-                moves.remove(i);
-            } else {
-                evaluations.push(0);
-            }
+        if is_piece_attacked(king_pos, position.move_next, &positions[i]) {
+            positions.remove(i);
+            moves.remove(i);
+        } else if !is_perft {
+            evaluations.push(position_eval(&positions[i]));
         } else {
-            let eval = position_eval(&positions[i]);
-
-            evaluations.push(eval);
+            evaluations.push(0);
         }
     }
 
