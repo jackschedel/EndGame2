@@ -230,7 +230,6 @@ struct PositionTreeNode {
     top_parent: usize,
     children: Vec<usize>,
     halfmove: HalfMove,
-    evaluation: i32,
 }
 
 impl PositionTree {
@@ -304,7 +303,7 @@ impl PositionTree {
         println!();
     }
 
-    fn gen_children(&mut self, index: usize, is_perft: bool) {
+    fn gen_children(&mut self, index: usize) {
         let mut position = self.position.clone();
 
         let mut trace = vec![index];
@@ -319,16 +318,11 @@ impl PositionTree {
         }
 
         let mut moves;
-        let mut evaluations;
 
         if self.nodes[index].halfmove.from == 0 && self.nodes[index].halfmove.to == 0 {
             moves = vec![self.nodes[index].halfmove];
-            evaluations = vec![self.nodes[index].evaluation];
         } else {
-            let genned = gen_possible(&mut position, is_perft);
-
-            moves = genned.0;
-            evaluations = genned.1;
+            moves = gen_possible(&mut position);
         }
 
         if moves.is_empty() {
@@ -337,30 +331,12 @@ impl PositionTree {
                 to: 0,
                 flag: None,
             });
-
-            let king_pos;
-            if position.move_next == Color::White {
-                king_pos = position.piece_set.white_king;
-            } else {
-                king_pos = position.piece_set.black_king;
-            }
-
-            if is_piece_attacked(king_pos, position.move_next, &position) {
-                if position.move_next == Color::White {
-                    evaluations.push(-100000);
-                } else {
-                    evaluations.push(100000);
-                }
-            } else {
-                evaluations.push(0);
-            }
         }
 
         for i in 0..moves.len() {
             let child_node = PositionTreeNode {
                 parent: index,
                 children: Vec::new(),
-                evaluation: evaluations[i],
                 top_parent: if index == 0 {
                     i
                 } else {
@@ -387,7 +363,7 @@ impl PositionTree {
         }
     }
 
-    fn increase_depth(&mut self, is_perft: bool) -> usize {
+    fn increase_depth(&mut self) -> usize {
         if self.nodes.len() == 0 {
             return 0;
         }
@@ -395,7 +371,7 @@ impl PositionTree {
         self.depth += 1;
 
         if self.nodes.len() == 1 {
-            self.gen_children(0, is_perft);
+            self.gen_children(0);
             for _ in 1..self.nodes.len() {
                 self.move_depths.push(1);
             }
@@ -411,7 +387,7 @@ impl PositionTree {
         let oldest_ungenned: usize = self.nodes.last().unwrap().parent + 1;
 
         for i in oldest_ungenned..self.nodes.len() {
-            self.gen_children(i, is_perft);
+            self.gen_children(i);
         }
 
         return self.nodes.len() - prev_len;
@@ -429,19 +405,14 @@ impl PositionTreeNode {
                 to: 63,
                 flag: None,
             },
-            evaluation: 0,
         }
     }
 
     fn print_node(self) {
         if self.halfmove.to == 63 && self.halfmove.from == 63 {
-            print!("root        ");
+            print!("root");
         } else {
-            print!(
-                "{} -> {: >4}",
-                self.halfmove.move_to_coords(),
-                self.evaluation
-            );
+            print!("{}", self.halfmove.move_to_coords());
         }
     }
 }
@@ -1576,8 +1547,8 @@ fn go_search(position: Position) {
 
     loop {
         nps_start = Instant::now();
-        leaf_size = tree.increase_depth(false);
-        (score, moves) = minimax(&tree, 0, true);
+        leaf_size = tree.increase_depth();
+        (score, moves) = minimax(&tree, &tree.position, 0, true);
         depth += 1;
         if leaf_size > 300000 || score.abs() == 100000 {
             break;
@@ -1600,9 +1571,9 @@ fn go_search(position: Position) {
     );
 
     if score == 100000 {
-        print!("score mate {} ", depth - 1);
+        print!("score mate {} ", depth / 2);
     } else if score == -100000 {
-        print!("score mate -{} ", depth - 1);
+        print!("score mate -{} ", depth / 2);
     } else {
         print!("depth {} score cp {} ", depth, score);
     }
@@ -1634,22 +1605,53 @@ fn print_pv(moves: &Vec<HalfMove>) {
     println!();
 }
 
-fn minimax(tree: &PositionTree, node_index: usize, is_maximizing: bool) -> (i32, Vec<HalfMove>) {
+fn minimax(
+    tree: &PositionTree,
+    position: &Position,
+    node_index: usize,
+    is_maximizing: bool,
+) -> (i32, Vec<HalfMove>) {
     let node = &tree.nodes[node_index];
 
     if node.children.is_empty() {
-        return (node.evaluation, vec![node.halfmove.clone()]);
+        let eval;
+        if node.halfmove.from == 0 && node.halfmove.to == 0 {
+            let king_pos;
+            if position.move_next == Color::White {
+                king_pos = position.piece_set.white_king;
+            } else {
+                king_pos = position.piece_set.black_king;
+            }
+
+            if is_piece_attacked(king_pos, position.move_next, &position) {
+                if position.move_next == Color::White {
+                    eval = -100000;
+                } else {
+                    eval = 100000;
+                }
+            } else {
+                eval = 0;
+            }
+        } else {
+            eval = position_eval(&position);
+        }
+        return (eval, vec![node.halfmove.clone()]);
     }
 
     let mut best_score = if is_maximizing { i32::MIN } else { i32::MAX };
     let mut best_path = Vec::new();
 
     for &child_index in &node.children {
-        let (child_score, mut child_path) = minimax(tree, child_index, !is_maximizing);
+        let child_node = &tree.nodes[child_index];
+        let mut new_pos = position.clone();
+
+        execute_halfmove(&mut new_pos, child_node.halfmove);
+
+        let (child_score, mut child_path) = minimax(tree, &new_pos, child_index, !is_maximizing);
 
         if is_maximizing && child_score > best_score || !is_maximizing && child_score < best_score {
             best_score = child_score;
-            child_path.insert(0, node.halfmove.clone());
+            child_path.insert(0, child_node.halfmove.clone());
             best_path = child_path;
         }
     }
@@ -1741,10 +1743,10 @@ fn perft_command(position: Position, depth: u8, shared_flags: &Arc<Mutex<SharedF
     let timer = Instant::now();
     let mut tree = PositionTree::from_pos(position);
 
-    let mut possible_moves = tree.increase_depth(true);
+    let mut possible_moves = tree.increase_depth();
 
     for _ in 1..(depth) {
-        possible_moves = tree.increase_depth(true);
+        possible_moves = tree.increase_depth();
     }
 
     tree.disp_perft_results();
@@ -1757,10 +1759,9 @@ fn perft_command(position: Position, depth: u8, shared_flags: &Arc<Mutex<SharedF
     println!("Time elapsed: {} ms", timer.elapsed().as_millis());
 }
 
-fn gen_possible(position: &mut Position, is_perft: bool) -> (Vec<HalfMove>, Vec<i32>) {
+fn gen_possible(position: &mut Position) -> Vec<HalfMove> {
     let mut moves: Vec<HalfMove>;
     let mut positions: Vec<Position> = Vec::new();
-    let mut evaluations: Vec<i32> = Vec::new();
 
     let king_pos: u8;
 
@@ -1804,16 +1805,10 @@ fn gen_possible(position: &mut Position, is_perft: bool) -> (Vec<HalfMove>, Vec<
         if is_piece_attacked(king_pos, position.move_next, &positions[i]) {
             positions.remove(i);
             moves.remove(i);
-        } else {
-            if is_perft {
-                evaluations.push(0);
-            } else {
-                evaluations.push(position_eval(&positions[i]));
-            }
         }
     }
 
-    return (moves, evaluations);
+    return moves;
 }
 
 fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool {
