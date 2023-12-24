@@ -1548,7 +1548,7 @@ fn go_search(position: Position) {
     loop {
         nps_start = Instant::now();
         leaf_size = tree.increase_depth();
-        (score, moves) = minimax(&tree, &tree.position, 0, true);
+        (score, moves) = minimax(&tree, &tree.position, 0, true, i32::MIN, i32::MAX);
         depth += 1;
         if leaf_size > 300000 || score.abs() == 100000 {
             break;
@@ -1610,6 +1610,8 @@ fn minimax(
     position: &Position,
     node_index: usize,
     is_maximizing: bool,
+    mut alpha: i32,
+    mut beta: i32,
 ) -> (i32, Vec<HalfMove>) {
     let node = &tree.nodes[node_index];
 
@@ -1647,16 +1649,31 @@ fn minimax(
 
         execute_halfmove(&mut new_pos, child_node.halfmove);
 
-        let (child_score, mut child_path) = minimax(tree, &new_pos, child_index, !is_maximizing);
+        let (child_score, mut child_path) =
+            minimax(tree, &new_pos, child_index, !is_maximizing, alpha, beta);
 
-        if is_maximizing && child_score > best_score || !is_maximizing && child_score < best_score {
-            best_score = child_score;
-            child_path.insert(0, child_node.halfmove.clone());
-            best_path = child_path;
+        if is_maximizing {
+            if child_score > best_score {
+                best_score = child_score;
+                child_path.insert(0, child_node.halfmove.clone());
+                best_path = child_path;
+            }
+            alpha = alpha.max(best_score);
+        } else {
+            if child_score < best_score {
+                best_score = child_score;
+                child_path.insert(0, child_node.halfmove.clone());
+                best_path = child_path;
+            }
+            beta = beta.min(best_score);
+        }
+
+        if beta <= alpha {
+            break;
         }
     }
 
-    return (best_score, best_path);
+    (best_score, best_path)
 }
 
 fn position_eval(position: &Position) -> i32 {
