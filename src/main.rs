@@ -318,13 +318,45 @@ impl PositionTree {
             execute_halfmove(&mut position, self.nodes[trace[i]].halfmove);
         }
 
-        let genned = gen_possible(&mut position, is_perft);
+        let mut moves;
+        let mut evaluations;
 
-        let positions = genned.0;
-        let moves = genned.1;
-        let evaluations = genned.2;
+        if self.nodes[index].halfmove.from == 0 && self.nodes[index].halfmove.to == 0 {
+            moves = vec![self.nodes[index].halfmove];
+            evaluations = vec![self.nodes[index].evaluation];
+        } else {
+            let genned = gen_possible(&mut position, is_perft);
 
-        for i in 0..positions.len() {
+            moves = genned.0;
+            evaluations = genned.1;
+        }
+
+        if moves.is_empty() {
+            moves.push(HalfMove {
+                from: 0,
+                to: 0,
+                flag: None,
+            });
+
+            let king_pos;
+            if position.move_next == Color::White {
+                king_pos = position.piece_set.white_king;
+            } else {
+                king_pos = position.piece_set.black_king;
+            }
+
+            if is_piece_attacked(king_pos, position.move_next, &position) {
+                if position.move_next == Color::White {
+                    evaluations.push(-100000);
+                } else {
+                    evaluations.push(100000);
+                }
+            } else {
+                evaluations.push(0);
+            }
+        }
+
+        for i in 0..moves.len() {
             let child_node = PositionTreeNode {
                 parent: index,
                 children: Vec::new(),
@@ -341,7 +373,7 @@ impl PositionTree {
             self.nodes.push(child_node);
         }
         if index != 0 {
-            self.move_depths[self.nodes[index].top_parent] += positions.len();
+            self.move_depths[self.nodes[index].top_parent] += moves.len();
         }
     }
 
@@ -393,8 +425,8 @@ impl PositionTreeNode {
             top_parent: 0,
             children: Vec::new(),
             halfmove: HalfMove {
-                from: 0,
-                to: 0,
+                from: 63,
+                to: 63,
                 flag: None,
             },
             evaluation: 0,
@@ -402,7 +434,7 @@ impl PositionTreeNode {
     }
 
     fn print_node(self) {
-        if self.halfmove.to == 0 && self.halfmove.from == 0 {
+        if self.halfmove.to == 63 && self.halfmove.from == 63 {
             print!("root        ");
         } else {
             print!(
@@ -792,6 +824,10 @@ fn handle_move_tokens(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Sh
 
 fn execute_halfmove(position: &mut Position, to_exec: HalfMove) {
     // no legality checks, assumes that to_exec is legal
+
+    if to_exec.from == 0 && to_exec.to == 0 {
+        return;
+    }
 
     position.halfmove_clock += 1;
 
@@ -1536,37 +1572,63 @@ fn go_search(position: Position) {
     let mut depth = 0;
     let mut leaf_size;
     let start_time = Instant::now();
+    let mut nps_start;
 
     loop {
+        nps_start = Instant::now();
         leaf_size = tree.increase_depth(false);
         (score, moves) = minimax(&tree, 0, true);
         depth += 1;
-        if leaf_size > 300000 {
+        if leaf_size > 300000 || score.abs() == 100000 {
             break;
+        } else if start_time.elapsed().as_millis() > 1000 {
+            println!(
+                "info depth {} nodes {} nps {} currmove {}",
+                depth,
+                leaf_size,
+                ((leaf_size as f64 / nps_start.elapsed().as_millis() as f64) * 1000.0) as u32,
+                moves[1].move_to_coords()
+            );
         }
     }
 
     print!(
-        "info depth {} score cp {} nodes {} time {} ",
-        depth,
-        score,
+        "info nodes {} nps {} time {} ",
         leaf_size,
+        ((leaf_size as f64 / nps_start.elapsed().as_millis() as f64) * 1000.0) as u32,
         start_time.elapsed().as_millis()
     );
 
+    if score == 100000 {
+        print!("score mate {} ", depth - 1);
+    } else if score == -100000 {
+        print!("score mate -{} ", depth - 1);
+    } else {
+        print!("depth {} score cp {} ", depth, score);
+    }
+
     print_pv(&moves);
 
-    println!(
-        "bestmove {} ponder {}",
-        moves[1].move_to_coords(),
-        moves[2].move_to_coords()
-    );
+    print!("bestmove {} ", moves[1].move_to_coords(),);
+
+    if moves[2].move_to_coords() != "a1a1" {
+        println!("ponder {}", moves[2].move_to_coords())
+    } else {
+        println!();
+    }
 }
 
 fn print_pv(moves: &Vec<HalfMove>) {
+    if moves[1].move_to_coords() == "a1a1" || moves.is_empty() {
+        return;
+    }
+
     print!("pv ");
 
     for i in 1..moves.len() {
+        if moves[i].move_to_coords() == "a1a1" {
+            break;
+        }
         print!("{} ", moves[i].move_to_coords());
     }
     println!();
@@ -1695,10 +1757,7 @@ fn perft_command(position: Position, depth: u8, shared_flags: &Arc<Mutex<SharedF
     println!("Time elapsed: {} ms", timer.elapsed().as_millis());
 }
 
-fn gen_possible(
-    position: &mut Position,
-    is_perft: bool,
-) -> (Vec<Position>, Vec<HalfMove>, Vec<i32>) {
+fn gen_possible(position: &mut Position, is_perft: bool) -> (Vec<HalfMove>, Vec<i32>) {
     let mut moves: Vec<HalfMove>;
     let mut positions: Vec<Position> = Vec::new();
     let mut evaluations: Vec<i32> = Vec::new();
@@ -1745,14 +1804,16 @@ fn gen_possible(
         if is_piece_attacked(king_pos, position.move_next, &positions[i]) {
             positions.remove(i);
             moves.remove(i);
-        } else if !is_perft {
-            evaluations.push(position_eval(&positions[i]));
         } else {
-            evaluations.push(0);
+            if is_perft {
+                evaluations.push(0);
+            } else {
+                evaluations.push(position_eval(&positions[i]));
+            }
         }
     }
 
-    return (positions, moves, evaluations);
+    return (moves, evaluations);
 }
 
 fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool {
