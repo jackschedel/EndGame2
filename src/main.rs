@@ -219,6 +219,7 @@ struct PositionTree {
     nodes: Vec<PositionTreeNode>,
     move_depths: Vec<usize>,
     depth: u8,
+    position: Position,
 }
 
 #[derive(Clone)]
@@ -227,7 +228,6 @@ struct PositionTreeNode {
     // using option here would be inefficient
     parent: usize,
     top_parent: usize,
-    position: Position,
     children: Vec<usize>,
     halfmove: HalfMove,
     evaluation: i32,
@@ -236,13 +236,15 @@ struct PositionTreeNode {
 impl PositionTree {
     fn from_pos(position: Position) -> Self {
         Self {
-            nodes: vec![PositionTreeNode::root_node(position)],
+            position,
+            nodes: vec![PositionTreeNode::root_node()],
             move_depths: vec![],
             depth: 0,
         }
     }
 
     fn print_tree(&self) {
+        println!("{}", self.position.to_fen());
         self.print_tree_structure();
         self.print_tree_nodes();
     }
@@ -303,7 +305,20 @@ impl PositionTree {
     }
 
     fn gen_children(&mut self, index: usize, is_perft: bool) {
-        let genned = gen_possible(&mut self.nodes[index].position, is_perft);
+        let mut position = self.position.clone();
+
+        let mut trace = vec![index];
+        while trace[0] != 0 {
+            trace.insert(0, self.nodes[trace[0]].parent);
+        }
+
+        trace.remove(0);
+
+        for i in 0..trace.len() {
+            execute_halfmove(&mut position, self.nodes[trace[i]].halfmove);
+        }
+
+        let genned = gen_possible(&mut position, is_perft);
 
         let positions = genned.0;
         let moves = genned.1;
@@ -312,7 +327,6 @@ impl PositionTree {
         for i in 0..positions.len() {
             let child_node = PositionTreeNode {
                 parent: index,
-                position: positions[i].clone(),
                 children: Vec::new(),
                 evaluation: evaluations[i],
                 top_parent: if index == 0 {
@@ -373,11 +387,10 @@ impl PositionTree {
 }
 
 impl PositionTreeNode {
-    fn root_node(position: Position) -> Self {
+    fn root_node() -> Self {
         Self {
             parent: 0,
             top_parent: 0,
-            position,
             children: Vec::new(),
             halfmove: HalfMove {
                 from: 0,
@@ -408,11 +421,9 @@ impl fmt::Debug for PositionTree {
         to_print += &format!("PositionTree:");
 
         to_print += &format!("\n {} - (root), children: {:?}", 0, self.nodes[0].children);
-        to_print += &format!("\n{}", self.nodes[0].position.to_fen());
 
         for i in 1..self.nodes.len() {
             to_print += &format!("\n {} - {:?}", i, self.nodes[i]);
-            to_print += &format!("\n{}", self.nodes[i].position.to_fen());
         }
 
         return write!(f, "{}", to_print);
@@ -443,8 +454,6 @@ struct Position {
 impl Position {
     fn to_fen(&self) -> String {
         let mut fen = String::new();
-
-        // todo: implement to_fen
 
         let mut index: u8 = 64;
         let mut blank_count: u8;
@@ -1667,6 +1676,7 @@ fn get_piece_value(piece: Piece, index: u8) -> i32 {
 }
 
 fn perft_command(position: Position, depth: u8, shared_flags: &Arc<Mutex<SharedFlags>>) {
+    let timer = Instant::now();
     let mut tree = PositionTree::from_pos(position);
 
     let mut possible_moves = tree.increase_depth(true);
@@ -1682,6 +1692,7 @@ fn perft_command(position: Position, depth: u8, shared_flags: &Arc<Mutex<SharedF
     if shared_flags.lock().unwrap().debug_enabled {
         tree.print_tree()
     }
+    println!("Time elapsed: {} ms", timer.elapsed().as_millis());
 }
 
 fn gen_possible(
