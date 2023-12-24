@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use std::io::{self, BufRead};
 use std::str::SplitWhitespace;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use std::{fmt, thread};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -1525,18 +1525,25 @@ fn go_search(position: Position) {
     let mut moves;
     let mut score;
     let mut depth = 0;
+    let mut leaf_size;
     let start_time = Instant::now();
 
     loop {
-        tree.increase_depth(false);
+        leaf_size = tree.increase_depth(false);
         (score, moves) = minimax(&tree, 0, true);
         depth += 1;
-        if start_time.elapsed() >= Duration::new(8, 0) {
+        if leaf_size > 300000 {
             break;
         }
     }
 
-    print!("info depth {} score cp {} ", depth, score);
+    print!(
+        "info depth {} score cp {} nodes {} time {} ",
+        depth,
+        score,
+        leaf_size,
+        start_time.elapsed().as_millis()
+    );
 
     print_pv(&moves);
 
