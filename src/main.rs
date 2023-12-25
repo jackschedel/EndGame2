@@ -243,7 +243,6 @@ impl PositionTree {
     }
 
     fn print_tree(&self) {
-        println!("{}", self.position.to_fen());
         self.print_tree_structure();
         self.print_tree_nodes();
     }
@@ -715,6 +714,7 @@ fn parse_command(
         "ref" => print_index_reference(),
         "print" => display_debug(shared_flags),
         "moves" => handle_move_tokens(&mut command, shared_flags),
+        "fen" => println!("{}", shared_flags.lock().unwrap().position.to_fen()),
         _ => println!("Error - Unknown command!"),
     }
 }
@@ -949,7 +949,7 @@ fn string_to_halfmove(
     let coord1 = coord_to_int(&coord1_str);
 
     let coord2_str: String = move_string.chars().skip(2).take(2).collect();
-    let coord2 = coord_to_int(&coord2_str);
+    let mut coord2 = coord_to_int(&coord2_str);
 
     let position = &shared_flags.lock().unwrap().position;
 
@@ -963,19 +963,23 @@ fn string_to_halfmove(
     } else if board[coord1 as usize] == Some(Piece::King(position.move_next)) {
         if position.move_next == Color::White {
             if coord1 == 4 {
-                if coord2 == 7 && position.castling_rights.white.kingside {
+                if (coord2 == 7 || coord2 == 6) && position.castling_rights.white.kingside {
+                    coord2 = 7;
                     flag = Some(HalfmoveFlag::Castle);
                 }
-                if coord2 == 0 && position.castling_rights.white.queenside {
+                if (coord2 == 0 || coord2 == 2) && position.castling_rights.white.queenside {
+                    coord2 = 0;
                     flag = Some(HalfmoveFlag::Castle);
                 }
             }
         } else {
             if coord1 == 60 {
-                if coord2 == 63 && position.castling_rights.black.kingside {
+                if (coord2 == 63 || coord2 == 62) && position.castling_rights.black.kingside {
+                    coord2 = 63;
                     flag = Some(HalfmoveFlag::Castle);
                 }
-                if coord2 == 56 && position.castling_rights.black.queenside {
+                if (coord2 == 56 || coord2 == 58) && position.castling_rights.black.queenside {
+                    coord2 = 56;
                     flag = Some(HalfmoveFlag::Castle);
                 }
             }
