@@ -945,176 +945,52 @@ fn string_to_halfmove(
     shared_flags: &Arc<Mutex<SharedFlags>>,
     move_string: &str,
 ) -> Option<HalfMove> {
-    let mut is_pieceless_move = true;
-
-    let mut char_index = 0;
-
-    match move_string.chars().nth(0) {
-        Some('N') | Some('B') | Some('R') | Some('Q') | Some('K') => {
-            is_pieceless_move = false;
-            char_index += 1;
-        }
-        None => return None,
-        _ => {}
-    }
-
-    let coord1_str: String = move_string.chars().skip(char_index).take(2).collect();
+    let coord1_str: String = move_string.chars().take(2).collect();
     let coord1 = coord_to_int(&coord1_str);
 
-    char_index += 2;
+    let coord2_str: String = move_string.chars().skip(2).take(2).collect();
+    let coord2 = coord_to_int(&coord2_str);
 
-    let coord_separator: char = move_string.chars().nth(char_index).unwrap();
+    let position = &shared_flags.lock().unwrap().position;
 
-    if coord_separator == '-' {
-        char_index += 1;
-    } else if coord_separator == 'x' {
-        char_index += 1;
-    }
+    let board = &position.board;
 
-    let coord2_str: String = move_string.chars().skip(char_index).take(2).collect();
-    let mut coord2 = coord_to_int(&coord2_str);
-
-    let mut flag: Option<HalfmoveFlag> = None;
-
-    let board = shared_flags.lock().unwrap().position.board;
-
-    if is_pieceless_move {
-        match board[coord1 as usize] {
-            Some(Piece::King(_)) => {
-                if coord1 == 4 {
-                    if coord2 == 2 {
-                        coord2 = 0;
-                    }
-                    if coord2 == 6 {
-                        coord2 = 7;
-                    }
-
-                    if coord2 != 0 && coord2 != 7 {
-                        is_pieceless_move = false;
-                    }
+    let mut flag = None;
+    if board[coord1 as usize] == Some(Piece::Pawn(position.move_next))
+        && position.en_passant_target == Some(coord2)
+    {
+        flag = Some(HalfmoveFlag::EnPassant);
+    } else if board[coord1 as usize] == Some(Piece::King(position.move_next)) {
+        if position.move_next == Color::White {
+            if coord1 == 4 {
+                if coord2 == 7 && position.castling_rights.white.kingside {
+                    flag = Some(HalfmoveFlag::Castle);
+                }
+                if coord2 == 0 && position.castling_rights.white.queenside {
+                    flag = Some(HalfmoveFlag::Castle);
                 }
             }
-            Some(Piece::Pawn(_)) => {}
-            None => {}
-            _ => {
-                is_pieceless_move = false;
-            }
-        }
-    }
-
-    if is_pieceless_move {
-        // pawn action or castling
-
-        if coord1 % 8 == coord2 % 8 {
-            // straight pawn move (i.e. not a capture)
-
-            if board[coord1 as usize] == None || !board[coord1 as usize].unwrap().is_pawn() {
-                println!("Error - no pawn at {}!", coord1_str);
-                return None;
-            }
-
-            match (coord2 / 8).abs_diff(coord1 / 8) {
-                1 => {}
-                2 => {
-                    flag = Some(HalfmoveFlag::DoublePawnMove);
-                }
-                _ => {
-                    println!(
-                        "Error - invalid pawn move from {} to {}!",
-                        coord1_str, coord2_str
-                    );
-                    return None;
-                }
-            }
-        } else if board[coord1 as usize].unwrap().is_pawn() {
-            // pawn captures
-
-            let file_diff = (coord1 % 8).abs_diff(coord2 % 8);
-
-            let rank_diff = (coord1 / 8).abs_diff(coord2 / 8);
-
-            if rank_diff > 1 || file_diff > 1 {
-                println!("Error - invalid pawn capture!");
-                return None;
-            }
-
-            let en_passant_target = shared_flags.lock().unwrap().position.en_passant_target;
-
-            if Some(coord2) == en_passant_target {
-                flag = Some(HalfmoveFlag::EnPassant);
-            }
-
-            // note: technically no checks for backwards pawn captures
-            // these checks are just for debugging, will want to add check vs genned moves later
         } else {
-            // castle
-
-            let from_pos = board[coord1 as usize];
-
-            let to_pos = board[coord2 as usize];
-
-            if from_pos == None || to_pos == None {
-                println!("Error - invalid castle or forgot to specify piece!");
-                return None;
-            }
-
-            let from_piece = from_pos.unwrap();
-
-            let to_piece = to_pos.unwrap();
-
-            let file_diff = (coord1 % 8).abs_diff(coord2 % 8);
-
-            let rank_diff = (coord1 / 8).abs_diff(coord2 / 8);
-
-            if !from_piece.is_king() || !to_piece.is_rook() || rank_diff != 0 || file_diff > 4 {
-                println!("Error - invalid castle or forgot to specify piece!");
-                return None;
-            }
-
-            flag = Some(HalfmoveFlag::Castle);
-
-            // note: no checks for whether the player is allowed to castle
-            // these checks are just for debugging, will want to add check vs genned moves later
-        }
-
-        match move_string.chars().nth(char_index + 2) {
-            Some('n') | Some('b') | Some('r') | Some('q') => {
-                if board[coord1 as usize] == None || !board[coord1 as usize].unwrap().is_pawn() {
-                    println!("Error - promoting, expected pawn!");
-                    return None;
+            if coord1 == 60 {
+                if coord2 == 63 && position.castling_rights.black.kingside {
+                    flag = Some(HalfmoveFlag::Castle);
                 }
-                // note: no check for correct rank on promotion
+                if coord2 == 56 && position.castling_rights.black.queenside {
+                    flag = Some(HalfmoveFlag::Castle);
+                }
             }
-            None => {}
-            _ => {
-                println!(
-                    "Error - unexpected promotion char: {:?}",
-                    move_string.chars().nth(char_index + 2)
-                );
-                return None;
-            }
-        }
-
-        match move_string.chars().nth(char_index + 2) {
-            Some('n') => {
-                flag = Some(HalfmoveFlag::KnightPromotion);
-            }
-            Some('b') => {
-                flag = Some(HalfmoveFlag::BishopPromotion);
-            }
-            Some('r') => {
-                flag = Some(HalfmoveFlag::RookPromotion);
-            }
-            Some('q') => {
-                flag = Some(HalfmoveFlag::QueenPromotion);
-            }
-            _ => {}
         }
     }
 
-    // note: no checks for if there are pieces in between the to + from
-    // all checks should be tacked on after the fact
-    // don't need to worry about efficiency because this will never be called unless debugging
+    if move_string.len() > 4 {
+        flag = match move_string.chars().nth(4) {
+            Some('n') => Some(HalfmoveFlag::KnightPromotion),
+            Some('b') => Some(HalfmoveFlag::BishopPromotion),
+            Some('r') => Some(HalfmoveFlag::RookPromotion),
+            Some('q') => Some(HalfmoveFlag::QueenPromotion),
+            _ => None,
+        };
+    }
 
     return Some(HalfMove {
         from: coord1,
