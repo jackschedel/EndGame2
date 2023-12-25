@@ -1548,8 +1548,18 @@ fn go_search(position: Position) {
     loop {
         nps_start = Instant::now();
         leaf_size = tree.increase_depth();
-        (score, moves) = minimax(&tree, &tree.position, 0, true, i32::MIN, i32::MAX);
+        (score, moves) = minimax(
+            &tree,
+            &tree.position,
+            0,
+            tree.position.move_next == Color::White,
+            i32::MIN,
+            i32::MAX,
+        );
         depth += 1;
+        if tree.position.move_next == Color::Black {
+            score *= -1;
+        }
         if leaf_size > 500000 || score.abs() == 100000 {
             break;
         } else if start_time.elapsed().as_millis() > 1000 {
@@ -1596,7 +1606,7 @@ fn print_pv(moves: &Vec<HalfMove>) {
 
     print!("pv ");
 
-    for i in 1..moves.len() {
+    for i in 0..moves.len() {
         if moves[i].move_to_coords() == "a1a1" {
             break;
         }
