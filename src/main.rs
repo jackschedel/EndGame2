@@ -43,18 +43,6 @@ impl Color {
 }
 
 impl Piece {
-    fn is_pawn(&self) -> bool {
-        matches!(self, Piece::Pawn(_))
-    }
-
-    fn is_rook(&self) -> bool {
-        matches!(self, Piece::Rook(_))
-    }
-
-    fn is_king(&self) -> bool {
-        matches!(self, Piece::King(_))
-    }
-
     fn get_color(&self) -> Color {
         match self {
             Piece::Pawn(color)
@@ -330,6 +318,10 @@ impl PositionTree {
                 to: 0,
                 flag: None,
             });
+        } else {
+            if index != 0 {
+                self.move_depths[self.nodes[index].top_parent] += moves.len();
+            }
         }
 
         for i in 0..moves.len() {
@@ -347,19 +339,20 @@ impl PositionTree {
             self.nodes[index].children.push(curr_size);
             self.nodes.push(child_node);
         }
-        if index != 0 {
-            self.move_depths[self.nodes[index].top_parent] += moves.len();
-        }
     }
 
     fn disp_perft_results(&self) {
+        let mut possible_moves = 0;
         for i in 0..self.move_depths.len() {
+            possible_moves += self.move_depths[i];
             print!(
                 "{}: {}\n",
                 self.nodes[i + 1].halfmove.move_to_coords(),
                 self.move_depths[i]
             );
         }
+
+        println!("\nNodes searched: {}", possible_moves);
     }
 
     fn increase_depth(&mut self) -> usize {
@@ -678,6 +671,7 @@ fn print_handle_command(input: String, shared_flags: &Arc<Mutex<SharedFlags>>) {
     println!("> {}", input);
     handle_command(input, shared_flags);
 }
+
 fn handle_command(input: String, shared_flags: &Arc<Mutex<SharedFlags>>) {
     let mut command = input.trim().split_whitespace();
     if let Some(word) = command.next() {
@@ -826,7 +820,7 @@ fn execute_halfmove(position: &mut Position, to_exec: HalfMove) {
 
     if to_exec.flag != Some(HalfmoveFlag::Castle) {
         if position.board[to_exec.to as usize] != None
-            || position.board[to_exec.from as usize].unwrap().is_pawn()
+            || position.board[to_exec.from as usize] == Some(Piece::Pawn(position.move_next))
         {
             position.halfmove_clock = 0;
         }
@@ -1654,15 +1648,11 @@ fn perft_command(position: Position, depth: u8, shared_flags: &Arc<Mutex<SharedF
     let timer = Instant::now();
     let mut tree = PositionTree::from_pos(position);
 
-    let mut possible_moves = tree.increase_depth();
-
     for _ in 1..(depth) {
-        possible_moves = tree.increase_depth();
+        tree.increase_depth();
     }
 
     tree.disp_perft_results();
-
-    println!("\nNodes searched: {}", possible_moves);
 
     if shared_flags.lock().unwrap().debug_enabled {
         tree.print_tree()
@@ -2390,7 +2380,6 @@ fn gen_halfmove(offset: i8, index: u8, position: &Position, moves: &mut Vec<Half
     return to_return;
 }
 
-// todo: rework en-passant to not check every pawn, implement like castling
 fn gen_white_pawn_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
     let mut moves: Vec<HalfMove> = Vec::new();
 
