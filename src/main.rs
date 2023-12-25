@@ -657,8 +657,8 @@ fn main() {
     });
 
     // start main program
-    print_handle_command("uci".to_string(), &shared_flags);
-    handle_command("position startpos".to_string(), &shared_flags);
+    // print_handle_command("uci".to_string(), &shared_flags);
+    // handle_command("position startpos".to_string(), &shared_flags);
     // print_handle_command("debug on".to_string(), &shared_flags);
 
     let shared_flags_clone = Arc::clone(&shared_flags);
@@ -1528,14 +1528,18 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
                 println!("Error: Depth not specified for perft command!");
             }
         }
-        None => {
-            go_search(position);
+        None | Some("infinite") => {
+            go_search(position, 500000);
+        }
+
+        Some("nodes") => {
+            go_search(position, command.next().unwrap().parse::<usize>().unwrap());
         }
         _ => println!("Go command improperly formatted!"),
     }
 }
 
-fn go_search(position: Position) {
+fn go_search(position: Position, node_stop: usize) {
     let mut tree = PositionTree::from_pos(position);
 
     let mut moves;
@@ -1560,7 +1564,7 @@ fn go_search(position: Position) {
         if tree.position.move_next == Color::Black {
             score *= -1;
         }
-        if leaf_size > 500000 || score.abs() == 100000 {
+        if leaf_size > node_stop || score.abs() == 100000 {
             break;
         } else if start_time.elapsed().as_millis() > 1000 {
             println!(
