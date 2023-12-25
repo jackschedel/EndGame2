@@ -1550,7 +1550,7 @@ fn go_search(position: Position) {
         leaf_size = tree.increase_depth();
         (score, moves) = minimax(&tree, &tree.position, 0, true, i32::MIN, i32::MAX);
         depth += 1;
-        if leaf_size > 300000 || score.abs() == 100000 {
+        if leaf_size > 500000 || score.abs() == 100000 {
             break;
         } else if start_time.elapsed().as_millis() > 1000 {
             println!(
@@ -1558,7 +1558,7 @@ fn go_search(position: Position) {
                 depth,
                 leaf_size,
                 ((leaf_size as f64 / nps_start.elapsed().as_millis() as f64) * 1000.0) as u32,
-                moves[1].move_to_coords()
+                moves[0].move_to_coords()
             );
         }
     }
@@ -1580,17 +1580,17 @@ fn go_search(position: Position) {
 
     print_pv(&moves);
 
-    print!("bestmove {} ", moves[1].move_to_coords(),);
+    print!("bestmove {} ", moves[0].move_to_coords(),);
 
     if moves[2].move_to_coords() != "a1a1" {
-        println!("ponder {}", moves[2].move_to_coords())
+        println!("ponder {}", moves[1].move_to_coords())
     } else {
         println!();
     }
 }
 
 fn print_pv(moves: &Vec<HalfMove>) {
-    if moves[1].move_to_coords() == "a1a1" || moves.is_empty() {
+    if moves[0].move_to_coords() == "a1a1" || moves.is_empty() {
         return;
     }
 
