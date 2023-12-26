@@ -1435,9 +1435,6 @@ fn go_search(position: Position, node_stop: usize) {
             i32::MAX,
         );
         depth += 1;
-        if tree.position.move_next == Color::Black {
-            score *= -1;
-        }
         if leaf_size > node_stop || score.abs() == 100000 {
             break;
         } else if start_time.elapsed().as_millis() > 1000 {
@@ -1445,7 +1442,7 @@ fn go_search(position: Position, node_stop: usize) {
                 "info depth {} nodes {} nps {} currmove {}",
                 depth,
                 leaf_size,
-                ((leaf_size as f64 / nps_start.elapsed().as_millis() as f64) * 1000.0) as u32,
+                ((leaf_size as f64 / nps_start.elapsed().as_nanos() as f64) * 1000000000.0) as u32,
                 moves[0].move_to_coords()
             );
         }
@@ -1454,7 +1451,7 @@ fn go_search(position: Position, node_stop: usize) {
     print!(
         "info nodes {} nps {} time {} ",
         leaf_size,
-        ((leaf_size as f64 / nps_start.elapsed().as_millis() as f64) * 1000.0) as u32,
+        ((leaf_size as f64 / nps_start.elapsed().as_nanos() as f64) * 1000000000.0) as u32,
         start_time.elapsed().as_millis()
     );
 
@@ -1470,7 +1467,7 @@ fn go_search(position: Position, node_stop: usize) {
 
     print!("bestmove {} ", moves[0].move_to_coords(),);
 
-    if moves[2].move_to_coords() != "a1a1" {
+    if moves.len() > 2 && moves[2].move_to_coords() != "a1a1" {
         println!("ponder {}", moves[1].move_to_coords())
     } else {
         println!();
@@ -1648,7 +1645,7 @@ fn perft_command(position: Position, depth: u8, shared_flags: &Arc<Mutex<SharedF
     let timer = Instant::now();
     let mut tree = PositionTree::from_pos(position);
 
-    for _ in 1..(depth) {
+    for _ in 0..(depth) {
         tree.increase_depth();
     }
 
@@ -1661,10 +1658,14 @@ fn perft_command(position: Position, depth: u8, shared_flags: &Arc<Mutex<SharedF
 }
 
 fn gen_possible(position: &mut Position) -> Vec<HalfMove> {
+    if position.halfmove_clock == 50 {
+        return vec![];
+    }
+
     let mut moves: Vec<HalfMove>;
     let mut positions: Vec<Position> = Vec::new();
 
-    let king_pos: u8;
+    let mut king_pos: u8;
 
     if position.move_next == Color::White {
         king_pos = position.piece_set.white_king;
@@ -1695,8 +1696,6 @@ fn gen_possible(position: &mut Position) -> Vec<HalfMove> {
     }
 
     for i in (0..positions.len()).rev() {
-        let king_pos: u8;
-
         if position.move_next == Color::White {
             king_pos = positions[i].piece_set.white_king;
         } else {
@@ -1724,7 +1723,10 @@ fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool
         }
 
         if let Some(piece) = position.board[(index as i8 + offset) as usize] {
-            if piece == Piece::Queen(opp_color) || piece == Piece::Rook(opp_color) {
+            if piece == Piece::Queen(opp_color)
+                || piece == Piece::Rook(opp_color)
+                || (piece == Piece::King(opp_color) && offset == -8)
+            {
                 return true;
             }
 
@@ -1743,7 +1745,10 @@ fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool
         }
 
         if let Some(piece) = position.board[(index as i8 + offset) as usize] {
-            if piece == Piece::Queen(opp_color) || piece == Piece::Rook(opp_color) {
+            if piece == Piece::Queen(opp_color)
+                || piece == Piece::Rook(opp_color)
+                || (piece == Piece::King(opp_color) && offset == 8)
+            {
                 return true;
             }
 
@@ -1762,7 +1767,10 @@ fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool
         }
 
         if let Some(piece) = position.board[(index as i8 + offset) as usize] {
-            if piece == Piece::Queen(opp_color) || piece == Piece::Rook(opp_color) {
+            if piece == Piece::Queen(opp_color)
+                || piece == Piece::Rook(opp_color)
+                || (piece == Piece::King(opp_color) && offset == 1)
+            {
                 return true;
             }
 
@@ -1781,7 +1789,10 @@ fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool
         }
 
         if let Some(piece) = position.board[(index as i8 + offset) as usize] {
-            if piece == Piece::Queen(opp_color) || piece == Piece::Rook(opp_color) {
+            if piece == Piece::Queen(opp_color)
+                || piece == Piece::Rook(opp_color)
+                || (piece == Piece::King(opp_color) && offset == -1)
+            {
                 return true;
             }
 
@@ -1800,7 +1811,10 @@ fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool
         }
 
         if let Some(piece) = position.board[(index as i8 + offset) as usize] {
-            if piece == Piece::Queen(opp_color) || piece == Piece::Bishop(opp_color) {
+            if piece == Piece::Queen(opp_color)
+                || piece == Piece::Bishop(opp_color)
+                || (piece == Piece::King(opp_color) && offset == 9)
+            {
                 return true;
             }
 
@@ -1819,7 +1833,10 @@ fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool
         }
 
         if let Some(piece) = position.board[(index as i8 + offset) as usize] {
-            if piece == Piece::Queen(opp_color) || piece == Piece::Bishop(opp_color) {
+            if piece == Piece::Queen(opp_color)
+                || piece == Piece::Bishop(opp_color)
+                || (piece == Piece::King(opp_color) && offset == 7)
+            {
                 return true;
             }
 
@@ -1838,7 +1855,10 @@ fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool
         }
 
         if let Some(piece) = position.board[(index as i8 + offset) as usize] {
-            if piece == Piece::Queen(opp_color) || piece == Piece::Bishop(opp_color) {
+            if piece == Piece::Queen(opp_color)
+                || piece == Piece::Bishop(opp_color)
+                || (piece == Piece::King(opp_color) && offset == -9)
+            {
                 return true;
             }
 
@@ -1857,7 +1877,10 @@ fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool
         }
 
         if let Some(piece) = position.board[(index as i8 + offset) as usize] {
-            if piece == Piece::Queen(opp_color) || piece == Piece::Bishop(opp_color) {
+            if piece == Piece::Queen(opp_color)
+                || piece == Piece::Bishop(opp_color)
+                || (piece == Piece::King(opp_color) && offset == -7)
+            {
                 return true;
             }
 
