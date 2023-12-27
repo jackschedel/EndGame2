@@ -53,6 +53,17 @@ impl Piece {
             | Piece::King(color) => *color,
         }
     }
+
+    fn get_cp_val(&self) -> u16 {
+        match self {
+            Piece::Pawn(_) => 100,
+            Piece::Knight(_) => 320,
+            Piece::Bishop(_) => 290,
+            Piece::Rook(_) => 490,
+            Piece::Queen(_) => 900,
+            _ => 0,
+        }
+    }
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -290,7 +301,7 @@ impl PositionTree {
         println!();
     }
 
-    fn gen_children(&mut self, index: usize) {
+    fn gen_children(&mut self, index: usize, trades_only: bool) {
         let mut position = self.position.clone();
 
         let mut trace = vec![index];
@@ -307,17 +318,21 @@ impl PositionTree {
         let mut moves;
 
         if self.nodes[index].halfmove.from == 0 && self.nodes[index].halfmove.to == 0 {
-            moves = vec![self.nodes[index].halfmove];
+            return;
         } else {
-            moves = gen_possible(&mut position);
+            moves = gen_possible(&mut position, trades_only);
         }
 
         if moves.is_empty() {
-            moves.push(HalfMove {
-                from: 0,
-                to: 0,
-                flag: None,
-            });
+            if trades_only {
+                return;
+            } else {
+                moves.push(HalfMove {
+                    from: 0,
+                    to: 0,
+                    flag: None,
+                });
+            }
         } else {
             if index != 0 {
                 self.move_depths[self.nodes[index].top_parent] += moves.len();
@@ -355,15 +370,17 @@ impl PositionTree {
         println!("\nNodes searched: {}", possible_moves);
     }
 
-    fn increase_depth(&mut self) -> usize {
+    fn increase_depth(&mut self, trades_only: bool) -> usize {
         if self.nodes.len() == 0 {
             return 0;
         }
 
-        self.depth += 1;
+        if !trades_only {
+            self.depth += 1;
+        }
 
         if self.nodes.len() == 1 {
-            self.gen_children(0);
+            self.gen_children(0, trades_only);
             for _ in 1..self.nodes.len() {
                 self.move_depths.push(1);
             }
@@ -379,10 +396,22 @@ impl PositionTree {
         let oldest_ungenned: usize = self.nodes.last().unwrap().parent + 1;
 
         for i in oldest_ungenned..self.nodes.len() {
-            self.gen_children(i);
+            self.gen_children(i, trades_only);
         }
 
         return self.nodes.len() - prev_len;
+    }
+
+    fn expand_resolve_trades(&mut self) {
+        let depth = 0;
+        loop {
+            let genned = self.increase_depth(true);
+            depth += 1;
+
+            if genned == 0 || (genned > (self.depth as usize) * 20000 && depth >= 10) {
+                break;
+            }
+        }
     }
 }
 
@@ -649,8 +678,8 @@ fn main() {
     });
 
     // start main program
-    // print_handle_command("uci".to_string(), &shared_flags);
-    // handle_command("position startpos".to_string(), &shared_flags);
+    shared_flags.lock().unwrap().uci_enabled = true;
+    handle_command("position startpos".to_string(), &shared_flags);
     // print_handle_command("debug on".to_string(), &shared_flags);
 
     let shared_flags_clone = Arc::clone(&shared_flags);
@@ -1425,31 +1454,42 @@ fn go_search(position: Position, node_stop: usize) {
 
     loop {
         nps_start = Instant::now();
-        leaf_size = tree.increase_depth();
+        leaf_size = tree.increase_depth(false);
+
+        let mut q_tree = tree.clone();
+
+        // only needs run if not found mate
+        if score.abs() != 100000 {
+            q_tree.expand_resolve_trades();
+        }
+
         (score, moves) = minimax(
-            &tree,
-            &tree.position,
+            &q_tree,
+            &q_tree.position,
             0,
-            tree.position.move_next == Color::White,
+            q_tree.position.move_next == Color::White,
             i32::MIN,
             i32::MAX,
         );
+
         depth += 1;
-        if leaf_size > node_stop || score.abs() == 100000 {
+        if leaf_size > node_stop || score.abs() == 100000 || depth == 20 {
             break;
-        } else if start_time.elapsed().as_millis() > 1000 {
+        } else if start_time.elapsed().as_millis() > 0 {
             println!(
-                "info depth {} nodes {} nps {} currmove {}",
+                "info depth {} nodes {} nps {} score {} currmove {}",
                 depth,
                 leaf_size,
                 ((leaf_size as f64 / nps_start.elapsed().as_nanos() as f64) * 1000000000.0) as u32,
+                score,
                 moves[0].move_to_coords()
             );
         }
     }
 
     print!(
-        "info nodes {} nps {} time {} ",
+        "info depth {} nodes {} nps {} time {} ",
+        depth,
         leaf_size,
         ((leaf_size as f64 / nps_start.elapsed().as_nanos() as f64) * 1000000000.0) as u32,
         start_time.elapsed().as_millis()
@@ -1460,7 +1500,7 @@ fn go_search(position: Position, node_stop: usize) {
     } else if score == -100000 {
         print!("score mate -{} ", depth / 2);
     } else {
-        print!("depth {} score cp {} ", depth, score);
+        print!("score cp {} ", score);
     }
 
     print_pv(&moves);
@@ -1512,11 +1552,14 @@ fn minimax(
 
             if is_piece_attacked(king_pos, position.move_next, &position) {
                 if position.move_next == Color::White {
+                    // black checkmates white
                     eval = -100000;
                 } else {
+                    // white checkmates black
                     eval = 100000;
                 }
             } else {
+                // stalemate
                 eval = 0;
             }
         } else {
@@ -1611,29 +1654,25 @@ fn get_piece_value(piece: Piece, index: u8) -> i32 {
         index as usize
     };
 
+    value = piece.get_cp_val() as i32;
+
     match piece {
         Piece::Pawn(_) => {
-            value = 100;
             value += pawn_table[pos];
         }
         Piece::Bishop(_) => {
-            value = 320;
             value += bishop_table[pos];
         }
         Piece::Knight(_) => {
-            value = 290;
             value += knight_table[pos];
         }
         Piece::Rook(_) => {
-            value = 490;
             value += rook_table[pos];
         }
         Piece::Queen(_) => {
-            value = 900;
             value += queen_table[pos];
         }
         Piece::King(_) => {
-            value = 80000;
             value += king_table[pos];
         }
     }
@@ -1646,7 +1685,7 @@ fn perft_command(position: Position, depth: u8, shared_flags: &Arc<Mutex<SharedF
     let mut tree = PositionTree::from_pos(position);
 
     for _ in 0..(depth) {
-        tree.increase_depth();
+        tree.increase_depth(false);
     }
 
     tree.disp_perft_results();
@@ -1657,7 +1696,7 @@ fn perft_command(position: Position, depth: u8, shared_flags: &Arc<Mutex<SharedF
     println!("Time elapsed: {} ms", timer.elapsed().as_millis());
 }
 
-fn gen_possible(position: &mut Position) -> Vec<HalfMove> {
+fn gen_possible(position: &mut Position, trades_only: bool) -> Vec<HalfMove> {
     if position.halfmove_clock == 50 {
         return vec![];
     }
@@ -1673,21 +1712,23 @@ fn gen_possible(position: &mut Position) -> Vec<HalfMove> {
         king_pos = position.piece_set.black_king;
     }
 
-    if is_piece_attacked(king_pos, position.move_next, position) {
-        if position.move_next == Color::White {
-            position.castling_rights.white = ColorCastlingRights {
-                kingside: false,
-                queenside: false,
-            };
-        } else {
-            position.castling_rights.black = ColorCastlingRights {
-                kingside: false,
-                queenside: false,
-            };
+    if !trades_only {
+        if is_piece_attacked(king_pos, position.move_next, position) {
+            if position.move_next == Color::White {
+                position.castling_rights.white = ColorCastlingRights {
+                    kingside: false,
+                    queenside: false,
+                };
+            } else {
+                position.castling_rights.black = ColorCastlingRights {
+                    kingside: false,
+                    queenside: false,
+                };
+            }
         }
     }
 
-    moves = gen_pseudolegal_moves(position);
+    moves = gen_pseudolegal_moves(position, trades_only);
 
     for i in moves.iter() {
         let mut position_copy = position.clone();
@@ -1993,7 +2034,7 @@ fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool
     return false;
 }
 
-fn gen_pseudolegal_moves(position: &Position) -> Vec<HalfMove> {
+fn gen_pseudolegal_moves(position: &Position, trades_only: bool) -> Vec<HalfMove> {
     let color = position.move_next;
 
     let piece_set: HashSet<u8>;
@@ -2009,7 +2050,7 @@ fn gen_pseudolegal_moves(position: &Position) -> Vec<HalfMove> {
     for i in piece_set {
         // gen pseudolegal moves for each piece at index i
         // add each move to moves vector
-        moves.extend(gen_piece_pseudolegal_moves(i, position));
+        moves.extend(gen_piece_pseudolegal_moves(i, position, trades_only));
 
         // likely no need to gen new threads here, will likely be suboptimal due to thread overhead.
         // if no need for threads, we can pass moves as an address instead and return nothing
@@ -2019,74 +2060,76 @@ fn gen_pseudolegal_moves(position: &Position) -> Vec<HalfMove> {
         // just a thought, if we make the eval properly, do we even need to check for legality?
     }
 
-    if color == Color::Black {
-        if position.castling_rights.black.kingside {
-            if position.board[63] == Some(Piece::Rook(Color::Black))
-                && position.board[62] == None
-                && position.board[61] == None
-                && position.board[60] == Some(Piece::King(Color::Black))
-                && !is_piece_attacked(60, Color::Black, position)
-                && !is_piece_attacked(61, Color::Black, position)
-                && !is_piece_attacked(62, Color::Black, position)
-            {
-                moves.push(HalfMove {
-                    from: 60,
-                    to: 63,
-                    flag: Some(HalfmoveFlag::Castle),
-                });
+    if !trades_only {
+        if color == Color::Black {
+            if position.castling_rights.black.kingside {
+                if position.board[63] == Some(Piece::Rook(Color::Black))
+                    && position.board[62] == None
+                    && position.board[61] == None
+                    && position.board[60] == Some(Piece::King(Color::Black))
+                    && !is_piece_attacked(60, Color::Black, position)
+                    && !is_piece_attacked(61, Color::Black, position)
+                    && !is_piece_attacked(62, Color::Black, position)
+                {
+                    moves.push(HalfMove {
+                        from: 60,
+                        to: 63,
+                        flag: Some(HalfmoveFlag::Castle),
+                    });
+                }
             }
-        }
 
-        if position.castling_rights.black.queenside {
-            if position.board[56] == Some(Piece::Rook(Color::Black))
-                && position.board[57] == None
-                && position.board[58] == None
-                && position.board[59] == None
-                && position.board[60] == Some(Piece::King(Color::Black))
-                && !is_piece_attacked(60, Color::Black, position)
-                && !is_piece_attacked(59, Color::Black, position)
-                && !is_piece_attacked(58, Color::Black, position)
-            {
-                moves.push(HalfMove {
-                    from: 60,
-                    to: 56,
-                    flag: Some(HalfmoveFlag::Castle),
-                });
+            if position.castling_rights.black.queenside {
+                if position.board[56] == Some(Piece::Rook(Color::Black))
+                    && position.board[57] == None
+                    && position.board[58] == None
+                    && position.board[59] == None
+                    && position.board[60] == Some(Piece::King(Color::Black))
+                    && !is_piece_attacked(60, Color::Black, position)
+                    && !is_piece_attacked(59, Color::Black, position)
+                    && !is_piece_attacked(58, Color::Black, position)
+                {
+                    moves.push(HalfMove {
+                        from: 60,
+                        to: 56,
+                        flag: Some(HalfmoveFlag::Castle),
+                    });
+                }
             }
-        }
-    } else {
-        if position.castling_rights.white.queenside {
-            if position.board[0] == Some(Piece::Rook(Color::White))
-                && position.board[1] == None
-                && position.board[2] == None
-                && position.board[3] == None
-                && position.board[4] == Some(Piece::King(Color::White))
-                && !is_piece_attacked(4, Color::White, position)
-                && !is_piece_attacked(3, Color::White, position)
-                && !is_piece_attacked(2, Color::White, position)
-            {
-                moves.push(HalfMove {
-                    from: 4,
-                    to: 0,
-                    flag: Some(HalfmoveFlag::Castle),
-                });
+        } else {
+            if position.castling_rights.white.queenside {
+                if position.board[0] == Some(Piece::Rook(Color::White))
+                    && position.board[1] == None
+                    && position.board[2] == None
+                    && position.board[3] == None
+                    && position.board[4] == Some(Piece::King(Color::White))
+                    && !is_piece_attacked(4, Color::White, position)
+                    && !is_piece_attacked(3, Color::White, position)
+                    && !is_piece_attacked(2, Color::White, position)
+                {
+                    moves.push(HalfMove {
+                        from: 4,
+                        to: 0,
+                        flag: Some(HalfmoveFlag::Castle),
+                    });
+                }
             }
-        }
 
-        if position.castling_rights.white.kingside {
-            if position.board[7] == Some(Piece::Rook(Color::White))
-                && position.board[6] == None
-                && position.board[5] == None
-                && position.board[4] == Some(Piece::King(Color::White))
-                && !is_piece_attacked(4, Color::White, position)
-                && !is_piece_attacked(5, Color::White, position)
-                && !is_piece_attacked(6, Color::White, position)
-            {
-                moves.push(HalfMove {
-                    from: 4,
-                    to: 7,
-                    flag: Some(HalfmoveFlag::Castle),
-                });
+            if position.castling_rights.white.kingside {
+                if position.board[7] == Some(Piece::Rook(Color::White))
+                    && position.board[6] == None
+                    && position.board[5] == None
+                    && position.board[4] == Some(Piece::King(Color::White))
+                    && !is_piece_attacked(4, Color::White, position)
+                    && !is_piece_attacked(5, Color::White, position)
+                    && !is_piece_attacked(6, Color::White, position)
+                {
+                    moves.push(HalfMove {
+                        from: 4,
+                        to: 7,
+                        flag: Some(HalfmoveFlag::Castle),
+                    });
+                }
             }
         }
     }
@@ -2094,34 +2137,57 @@ fn gen_pseudolegal_moves(position: &Position) -> Vec<HalfMove> {
     return moves;
 }
 
-fn gen_piece_pseudolegal_moves(piece_index: u8, position: &Position) -> Vec<HalfMove> {
-    let piece_option = position.board[piece_index as usize];
+fn gen_piece_pseudolegal_moves(
+    piece_index: u8,
+    position: &Position,
+    trades_only: bool,
+) -> Vec<HalfMove> {
+    let mut moves;
 
-    match piece_option {
+    match position.board[piece_index as usize] {
         Some(Piece::Pawn(Color::White)) => {
-            return gen_white_pawn_pseudolegal_moves(piece_index, position)
+            moves = gen_white_pawn_moves(piece_index, position);
         }
         Some(Piece::Pawn(Color::Black)) => {
-            return gen_black_pawn_pseudolegal_moves(piece_index, position)
+            moves = gen_black_pawn_moves(piece_index, position);
         }
-        Some(Piece::Knight(_)) => return gen_knight_pseudolegal_moves(piece_index, position),
-        Some(Piece::Rook(_)) => return gen_rook_pseudolegal_moves(piece_index, position),
-        Some(Piece::Bishop(_)) => return gen_bishop_pseudolegal_moves(piece_index, position),
-        Some(Piece::Queen(_)) => return gen_queen_pseudolegal_moves(piece_index, position),
-        Some(Piece::King(_)) => return gen_king_pseudolegal_moves(piece_index, position),
+        Some(Piece::Knight(_)) => {
+            moves = gen_knight_moves(piece_index, position);
+        }
+        Some(Piece::Rook(_)) => {
+            moves = gen_rook_moves(piece_index, position);
+        }
+        Some(Piece::Bishop(_)) => {
+            moves = gen_bishop_moves(piece_index, position);
+        }
+        Some(Piece::Queen(_)) => {
+            moves = gen_queen_moves(piece_index, position);
+        }
+        Some(Piece::King(_)) => {
+            moves = gen_normal_king_moves(piece_index, position);
+        }
         None => panic!("Error, index contained in piece_set has no piece on board!"),
     }
-}
 
-fn gen_rook_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
-    let mut moves: Vec<HalfMove> = Vec::new();
+    if trades_only {
+        for i in (0..moves.len()).rev() {
+            if position.board[moves[i].to as usize] == None {
+                moves.remove(i);
+            } else {
+                let from = position.board[moves[i].from as usize].unwrap();
+                let to = position.board[moves[i].to as usize].unwrap();
 
-    gen_rook_moves(index, position, &mut moves);
+                if from.get_cp_val() <= to.get_cp_val() {
+                    moves.remove(i);
+                }
+            }
+        }
+    }
 
     return moves;
 }
 
-fn gen_king_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
+fn gen_normal_king_moves(index: u8, position: &Position) -> Vec<HalfMove> {
     let mut moves: Vec<HalfMove> = Vec::new();
 
     gen_halfmove_with_check(7, index, position, &mut moves);
@@ -2154,25 +2220,22 @@ fn gen_halfmove_with_check(offset: i8, index: u8, position: &Position, moves: &m
     gen_halfmove(offset, index, position, moves);
 }
 
-fn gen_bishop_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
+fn gen_queen_moves(index: u8, position: &Position) -> Vec<HalfMove> {
     let mut moves: Vec<HalfMove> = Vec::new();
 
-    gen_bishop_moves(index, position, &mut moves);
+    gen_down_left(index, position, &mut moves);
+    gen_down_right(index, position, &mut moves);
+    gen_up_left(index, position, &mut moves);
+    gen_up_right(index, position, &mut moves);
+    gen_downwards(index, position, &mut moves);
+    gen_right(index, position, &mut moves);
+    gen_upwards(index, position, &mut moves);
+    gen_left(index, position, &mut moves);
 
     return moves;
 }
 
-fn gen_queen_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
-    let mut moves: Vec<HalfMove> = Vec::new();
-
-    gen_rook_moves(index, position, &mut moves);
-
-    gen_bishop_moves(index, position, &mut moves);
-
-    return moves;
-}
-
-fn gen_knight_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
+fn gen_knight_moves(index: u8, position: &Position) -> Vec<HalfMove> {
     let mut moves: Vec<HalfMove> = Vec::new();
 
     // total of 8 move combinations
@@ -2370,18 +2433,26 @@ fn gen_down_left(index: u8, position: &Position, moves: &mut Vec<HalfMove>) {
     }
 }
 
-fn gen_bishop_moves(index: u8, position: &Position, moves: &mut Vec<HalfMove>) {
-    gen_down_left(index, position, moves);
-    gen_down_right(index, position, moves);
-    gen_up_left(index, position, moves);
-    gen_up_right(index, position, moves);
+fn gen_bishop_moves(index: u8, position: &Position) -> Vec<HalfMove> {
+    let mut moves: Vec<HalfMove> = Vec::new();
+
+    gen_down_left(index, position, &mut moves);
+    gen_down_right(index, position, &mut moves);
+    gen_up_left(index, position, &mut moves);
+    gen_up_right(index, position, &mut moves);
+
+    return moves;
 }
 
-fn gen_rook_moves(index: u8, position: &Position, moves: &mut Vec<HalfMove>) {
-    gen_downwards(index, position, moves);
-    gen_right(index, position, moves);
-    gen_upwards(index, position, moves);
-    gen_left(index, position, moves);
+fn gen_rook_moves(index: u8, position: &Position) -> Vec<HalfMove> {
+    let mut moves: Vec<HalfMove> = Vec::new();
+
+    gen_downwards(index, position, &mut moves);
+    gen_right(index, position, &mut moves);
+    gen_upwards(index, position, &mut moves);
+    gen_left(index, position, &mut moves);
+
+    return moves;
 }
 
 fn gen_halfmove(offset: i8, index: u8, position: &Position, moves: &mut Vec<HalfMove>) -> bool {
@@ -2403,7 +2474,7 @@ fn gen_halfmove(offset: i8, index: u8, position: &Position, moves: &mut Vec<Half
     return to_return;
 }
 
-fn gen_white_pawn_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
+fn gen_white_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
     let mut moves: Vec<HalfMove> = Vec::new();
 
     let board = position.board;
@@ -2550,7 +2621,7 @@ fn gen_white_pawn_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfM
     return moves;
 }
 
-fn gen_black_pawn_pseudolegal_moves(index: u8, position: &Position) -> Vec<HalfMove> {
+fn gen_black_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
     let mut moves: Vec<HalfMove> = Vec::new();
 
     let board = position.board;
