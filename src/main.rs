@@ -33,6 +33,63 @@ enum HalfmoveFlag {
     DoublePawnMove,
 }
 
+#[derive(PartialEq, Clone, Copy)]
+struct HalfMove {
+    from: u8,
+    to: u8,
+    flag: Option<HalfmoveFlag>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ColorCastlingRights {
+    kingside: bool,
+    queenside: bool,
+}
+
+#[derive(Clone)]
+struct PieceSet {
+    all: HashSet<u8>,
+    white: HashSet<u8>,
+    black: HashSet<u8>,
+    white_king: u8,
+    black_king: u8,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct CastlingRights {
+    black: ColorCastlingRights,
+    white: ColorCastlingRights,
+}
+
+#[derive(Clone)]
+struct Position {
+    board: [Option<Piece>; 64],
+    piece_set: PieceSet,
+    move_next: Color,
+    castling_rights: CastlingRights,
+    en_passant_target: Option<u8>,
+    halfmove_clock: u16,
+    fullmove_number: u16,
+}
+
+#[derive(Clone)]
+struct PositionTree {
+    nodes: Vec<PositionTreeNode>,
+    move_depths: Vec<usize>,
+    depth: u8,
+    position: Position,
+}
+
+#[derive(Clone)]
+struct PositionTreeNode {
+    // parent, top_parent, and halfmove for 0th index in nodes don't matter.
+    // using option here would be inefficient
+    parent: usize,
+    top_parent: usize,
+    children: Vec<usize>,
+    halfmove: HalfMove,
+}
+
 impl Color {
     fn opposite(&self) -> Color {
         match *self {
@@ -66,12 +123,6 @@ impl Piece {
     }
 }
 
-#[derive(PartialEq, Clone, Copy)]
-struct HalfMove {
-    from: u8,
-    to: u8,
-    flag: Option<HalfmoveFlag>,
-}
 impl fmt::Debug for HalfMove {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.flag == None {
@@ -124,21 +175,6 @@ impl HalfMove {
             promotion_str
         );
     }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct ColorCastlingRights {
-    kingside: bool,
-    queenside: bool,
-}
-
-#[derive(Clone)]
-struct PieceSet {
-    all: HashSet<u8>,
-    white: HashSet<u8>,
-    black: HashSet<u8>,
-    white_king: u8,
-    black_king: u8,
 }
 
 impl fmt::Debug for PieceSet {
@@ -206,29 +242,6 @@ impl PieceSet {
             self.black.remove(&index);
         }
     }
-}
-#[derive(Clone, Debug, PartialEq)]
-struct CastlingRights {
-    black: ColorCastlingRights,
-    white: ColorCastlingRights,
-}
-
-#[derive(Clone)]
-struct PositionTree {
-    nodes: Vec<PositionTreeNode>,
-    move_depths: Vec<usize>,
-    depth: u8,
-    position: Position,
-}
-
-#[derive(Clone)]
-struct PositionTreeNode {
-    // parent, top_parent, and halfmove for 0th index in nodes don't matter.
-    // using option here would be inefficient
-    parent: usize,
-    top_parent: usize,
-    children: Vec<usize>,
-    halfmove: HalfMove,
 }
 
 impl PositionTree {
@@ -462,17 +475,6 @@ impl fmt::Debug for PositionTreeNode {
 
         return write!(f, "{}", to_print);
     }
-}
-
-#[derive(Clone)]
-struct Position {
-    board: [Option<Piece>; 64],
-    piece_set: PieceSet,
-    move_next: Color,
-    castling_rights: CastlingRights,
-    en_passant_target: Option<u8>,
-    halfmove_clock: u16,
-    fullmove_number: u16,
 }
 
 impl Position {
