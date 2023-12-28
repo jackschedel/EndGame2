@@ -1,4 +1,5 @@
 use hashbrown::HashSet;
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::collections::VecDeque;
 use std::io::{self, BufRead};
 use std::str::SplitWhitespace;
@@ -70,6 +71,7 @@ struct Position {
     en_passant_target: Option<u8>,
     halfmove_clock: u16,
     fullmove_number: u16,
+    hash: u64,
 }
 
 #[derive(Clone)]
@@ -416,7 +418,7 @@ impl PositionTree {
     }
 
     fn expand_resolve_trades(&mut self) {
-        let depth = 0;
+        let mut depth = 0;
         loop {
             let genned = self.increase_depth(true);
             depth += 1;
@@ -478,6 +480,78 @@ impl fmt::Debug for PositionTreeNode {
 }
 
 impl Position {
+    fn gen_hash(&mut self) {
+        let mut hash: u64 = 0;
+
+        let seed: [u8; 32] = [0; 32];
+        let mut rng = StdRng::from_seed(seed);
+        let zobrist: Vec<u64> = (0..781).map(|_| rng.gen()).collect();
+
+        for i in 0..64 {
+            match self.board[i] {
+                Some(Piece::Pawn(Color::White)) => {
+                    hash = hash.wrapping_add(zobrist[i]);
+                }
+                Some(Piece::Pawn(Color::Black)) => {
+                    hash = hash.wrapping_add(zobrist[i + 64]);
+                }
+                Some(Piece::Knight(Color::White)) => {
+                    hash = hash.wrapping_add(zobrist[i + (64 * 2)]);
+                }
+                Some(Piece::Knight(Color::Black)) => {
+                    hash = hash.wrapping_add(zobrist[i + (64 * 3)]);
+                }
+                Some(Piece::Bishop(Color::White)) => {
+                    hash = hash.wrapping_add(zobrist[i + (64 * 4)]);
+                }
+                Some(Piece::Bishop(Color::Black)) => {
+                    hash = hash.wrapping_add(zobrist[i + (64 * 5)]);
+                }
+                Some(Piece::Rook(Color::White)) => {
+                    hash = hash.wrapping_add(zobrist[i + (64 * 6)]);
+                }
+                Some(Piece::Rook(Color::Black)) => {
+                    hash = hash.wrapping_add(zobrist[i + (64 * 7)]);
+                }
+                Some(Piece::Queen(Color::White)) => {
+                    hash = hash.wrapping_add(zobrist[i + (64 * 8)]);
+                }
+                Some(Piece::Queen(Color::Black)) => {
+                    hash = hash.wrapping_add(zobrist[i + (64 * 9)]);
+                }
+                Some(Piece::King(Color::White)) => {
+                    hash = hash.wrapping_add(zobrist[i + (64 * 10)]);
+                }
+                Some(Piece::King(Color::Black)) => {
+                    hash = hash.wrapping_add(zobrist[i + (64 * 11)]);
+                }
+                None => {}
+            }
+        }
+
+        if self.move_next == Color::Black {
+            hash = hash.wrapping_add(768);
+        }
+        if self.castling_rights.white.kingside {
+            hash = hash.wrapping_add(769);
+        }
+        if self.castling_rights.white.queenside {
+            hash = hash.wrapping_add(770);
+        }
+        if self.castling_rights.black.kingside {
+            hash = hash.wrapping_add(771);
+        }
+        if self.castling_rights.black.queenside {
+            hash = hash.wrapping_add(772);
+        }
+
+        if self.en_passant_target != None {
+            hash = hash.wrapping_add(773 + (self.en_passant_target.unwrap() % 8) as u64);
+        }
+
+        self.hash = hash;
+    }
+
     fn to_fen(&self) -> String {
         let mut fen = String::new();
 
@@ -663,6 +737,7 @@ fn main() {
             en_passant_target: None,
             halfmove_clock: 0,
             fullmove_number: 0,
+            hash: 0,
         },
         // settings
         options: EngineOptions {
@@ -964,6 +1039,8 @@ fn execute_halfmove(position: &mut Position, to_exec: HalfMove) {
     } else {
         position.move_next = Color::Black;
     }
+
+    position.gen_hash();
 }
 
 fn string_to_halfmove(
@@ -1191,6 +1268,7 @@ fn set_board_from_fen(fen: &str, shared_flags: &Arc<Mutex<SharedFlags>>) {
         en_passant_target: None,
         halfmove_clock: 0,
         fullmove_number: 0,
+        hash: 0,
     };
 
     let mut index: usize = 56;
@@ -1205,6 +1283,7 @@ fn set_board_from_fen(fen: &str, shared_flags: &Arc<Mutex<SharedFlags>>) {
     }
 
     display_debug(shared_flags);
+    shared_flags.lock().unwrap().position.gen_hash();
 }
 
 fn display_debug(shared_flags: &Arc<Mutex<SharedFlags>>) {
@@ -1461,9 +1540,7 @@ fn go_search(position: Position, node_stop: usize) {
         let mut q_tree = tree.clone();
 
         // only needs run if not found mate
-        if score.abs() != 100000 {
-            q_tree.expand_resolve_trades();
-        }
+        q_tree.expand_resolve_trades();
 
         (score, moves) = minimax(
             &q_tree,
