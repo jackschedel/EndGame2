@@ -118,7 +118,7 @@ impl Piece {
             Piece::Bishop(_) => 290,
             Piece::Rook(_) => 490,
             Piece::Queen(_) => 900,
-            _ => 0,
+            Piece::King(_) => 60000,
         }
     }
 }
@@ -1040,6 +1040,30 @@ fn execute_halfmove(position: &mut Position, to_exec: HalfMove) {
     } else {
         position.move_next = Color::Black;
     }
+
+    let king_pos: u8;
+    let kingside: bool;
+    let queenside: bool;
+
+    if position.move_next == Color::White {
+        king_pos = position.piece_set.white_king;
+        kingside = position.castling_rights.white.kingside;
+        queenside = position.castling_rights.white.queenside;
+    } else {
+        king_pos = position.piece_set.black_king;
+        kingside = position.castling_rights.black.kingside;
+        queenside = position.castling_rights.black.queenside;
+    }
+
+    if kingside && queenside && is_piece_attacked(king_pos, position.move_next, position) {
+        if position.move_next == Color::White {
+            position.castling_rights.white.kingside = false;
+            position.castling_rights.white.queenside = false;
+        } else {
+            position.castling_rights.black.kingside = false;
+            position.castling_rights.black.queenside = false;
+        }
+    }
 }
 
 fn string_to_halfmove(
@@ -1638,6 +1662,7 @@ fn minimax(
                 king_pos = position.piece_set.black_king;
             }
 
+            // piece attacked opt notes: only happens on nullmove so fine
             if is_piece_attacked(king_pos, position.move_next, &position) {
                 if position.move_next == Color::White {
                     // black checkmates white
@@ -1819,30 +1844,6 @@ fn gen_possible(position: &mut Position, trades_only: bool) -> Vec<HalfMove> {
     let mut moves: Vec<HalfMove>;
     let mut positions: Vec<Position> = Vec::new();
 
-    let mut king_pos: u8;
-
-    if position.move_next == Color::White {
-        king_pos = position.piece_set.white_king;
-    } else {
-        king_pos = position.piece_set.black_king;
-    }
-
-    if !trades_only {
-        if is_piece_attacked(king_pos, position.move_next, position) {
-            if position.move_next == Color::White {
-                position.castling_rights.white = ColorCastlingRights {
-                    kingside: false,
-                    queenside: false,
-                };
-            } else {
-                position.castling_rights.black = ColorCastlingRights {
-                    kingside: false,
-                    queenside: false,
-                };
-            }
-        }
-    }
-
     moves = gen_pseudolegal_moves(position, trades_only);
 
     for i in moves.iter() {
@@ -1852,12 +1853,14 @@ fn gen_possible(position: &mut Position, trades_only: bool) -> Vec<HalfMove> {
     }
 
     for i in (0..positions.len()).rev() {
+        let king_pos;
         if position.move_next == Color::White {
             king_pos = positions[i].piece_set.white_king;
         } else {
             king_pos = positions[i].piece_set.black_king;
         }
 
+        // todo opt out and allow king cap
         if is_piece_attacked(king_pos, position.move_next, &positions[i]) {
             positions.remove(i);
             moves.remove(i);
@@ -2182,7 +2185,6 @@ fn gen_pseudolegal_moves(position: &Position, trades_only: bool) -> Vec<HalfMove
                     && position.board[62] == None
                     && position.board[61] == None
                     && position.board[60] == Some(Piece::King(Color::Black))
-                    && !is_piece_attacked(60, Color::Black, position)
                     && !is_piece_attacked(61, Color::Black, position)
                     && !is_piece_attacked(62, Color::Black, position)
                 {
@@ -2200,7 +2202,6 @@ fn gen_pseudolegal_moves(position: &Position, trades_only: bool) -> Vec<HalfMove
                     && position.board[58] == None
                     && position.board[59] == None
                     && position.board[60] == Some(Piece::King(Color::Black))
-                    && !is_piece_attacked(60, Color::Black, position)
                     && !is_piece_attacked(59, Color::Black, position)
                     && !is_piece_attacked(58, Color::Black, position)
                 {
@@ -2218,7 +2219,6 @@ fn gen_pseudolegal_moves(position: &Position, trades_only: bool) -> Vec<HalfMove
                     && position.board[2] == None
                     && position.board[3] == None
                     && position.board[4] == Some(Piece::King(Color::White))
-                    && !is_piece_attacked(4, Color::White, position)
                     && !is_piece_attacked(3, Color::White, position)
                     && !is_piece_attacked(2, Color::White, position)
                 {
@@ -2235,7 +2235,6 @@ fn gen_pseudolegal_moves(position: &Position, trades_only: bool) -> Vec<HalfMove
                     && position.board[6] == None
                     && position.board[5] == None
                     && position.board[4] == Some(Piece::King(Color::White))
-                    && !is_piece_attacked(4, Color::White, position)
                     && !is_piece_attacked(5, Color::White, position)
                     && !is_piece_attacked(6, Color::White, position)
                 {
