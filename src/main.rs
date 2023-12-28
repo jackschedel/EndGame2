@@ -421,7 +421,10 @@ impl PositionTree {
             let genned = self.increase_depth(true);
             depth += 1;
 
-            if genned == 0 || (genned > (self.depth as usize) * 20000 && depth >= 10) {
+            println!("info string traderesolve depth {} nodes {}", depth, genned);
+
+            if genned == 0 || (genned > (self.depth as usize) * 20000 && depth >= 6) || depth >= 15
+            {
                 break;
             }
         }
@@ -1508,7 +1511,7 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
             }
         }
         None | Some("infinite") => {
-            go_search(position, 500000, shared_flags);
+            go_search(position, 175000, shared_flags);
         }
 
         Some("nodes") => {
@@ -2289,7 +2292,7 @@ fn gen_piece_pseudolegal_moves(
                 let from = position.board[moves[i].from as usize].unwrap();
                 let to = position.board[moves[i].to as usize].unwrap();
 
-                if from.get_cp_val() <= to.get_cp_val() {
+                if from.get_cp_val() > to.get_cp_val() {
                     moves.remove(i);
                 }
             }
