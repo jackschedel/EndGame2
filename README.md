@@ -11,7 +11,7 @@
 </a>
 
 <p align="center">
-<img width="85%" align="center" src="https://github.com/jackschedel/EndGame2/assets/26682594/0868af42-624a-40b7-b169-5652928af7aa"/>
+<img width="85%" align="center" src="https://github.com/jackschedel/EndGame2/assets/26682594/9203aaaf-0ddf-4327-8ca7-a2760ab77df8"/>
 </p>
 
 ## 🌐 Overview
