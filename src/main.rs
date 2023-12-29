@@ -416,7 +416,7 @@ impl PositionTree {
     }
 
     fn expand_resolve_trades(&mut self) {
-        let depth = 0;
+        let mut depth = 0;
         loop {
             let genned = self.increase_depth(true);
             depth += 1;
@@ -1460,10 +1460,7 @@ fn go_search(position: Position, node_stop: usize) {
 
         let mut q_tree = tree.clone();
 
-        // only needs run if not found mate
-        if score.abs() != 100000 {
-            q_tree.expand_resolve_trades();
-        }
+        q_tree.expand_resolve_trades();
 
         (score, moves) = minimax(
             &q_tree,
