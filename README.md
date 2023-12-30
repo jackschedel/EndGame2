@@ -9,9 +9,10 @@
 <a href="https://github.com/jackschedel/EndGame2/pulls" target="_blank">
 <img src="https://img.shields.io/github/issues-pr/jackschedel/EndGame2?style=flat-square" alt="pull-requests"/>
 </a>
-
+  
+## 
 <p align="center">
-<img width="85%" align="center" src="https://github.com/jackschedel/EndGame2/assets/26682594/9203aaaf-0ddf-4327-8ca7-a2760ab77df8"/>
+<img width="60%" align="center" src="https://schedel.io/endgamess.d2008e11.png"/>
 </p>
 
 ## 🌐 Overview
