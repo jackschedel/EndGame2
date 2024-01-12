@@ -75,7 +75,6 @@ struct Position {
 #[derive(Clone)]
 struct PositionTree {
     nodes: Vec<PositionTreeNode>,
-    move_depths: Vec<usize>,
     depth: u8,
     position: Position,
 }
@@ -249,7 +248,6 @@ impl PositionTree {
         Self {
             position,
             nodes: vec![PositionTreeNode::root_node()],
-            move_depths: vec![],
             depth: 0,
         }
     }
@@ -346,12 +344,7 @@ impl PositionTree {
                     flag: None,
                 });
             }
-        } else {
-            if index != 0 {
-                self.move_depths[self.nodes[index].top_parent] += moves.len();
-            }
         }
-
         for i in 0..moves.len() {
             let child_node = PositionTreeNode {
                 parent: index,
@@ -369,20 +362,6 @@ impl PositionTree {
         }
     }
 
-    fn disp_perft_results(&self) {
-        let mut possible_moves = 0;
-        for i in 0..self.move_depths.len() {
-            possible_moves += self.move_depths[i];
-            print!(
-                "{}: {}\n",
-                self.nodes[i + 1].halfmove.move_to_coords(),
-                self.move_depths[i]
-            );
-        }
-
-        println!("\nNodes searched: {}", possible_moves);
-    }
-
     fn increase_depth(&mut self, trades_only: bool) -> usize {
         if self.nodes.len() == 0 {
             return 0;
@@ -394,14 +373,7 @@ impl PositionTree {
 
         if self.nodes.len() == 1 {
             self.gen_children(0, trades_only);
-            for _ in 1..self.nodes.len() {
-                self.move_depths.push(1);
-            }
             return self.nodes.len() - 1;
-        } else {
-            for i in 0..self.move_depths.len() {
-                self.move_depths[i] = 0;
-            }
         }
 
         let prev_len = self.nodes.len();
@@ -1824,16 +1796,19 @@ fn perft_command(position: Position, depth: u8, shared_flags: &Arc<Mutex<SharedF
     let timer = Instant::now();
     let mut tree = PositionTree::from_pos(position);
 
+    let mut perft = 0;
     for _ in 0..(depth) {
-        tree.increase_depth(false);
+        perft = tree.increase_depth(false);
     }
-
-    tree.disp_perft_results();
 
     if shared_flags.lock().unwrap().debug_enabled {
         tree.print_tree()
     }
-    println!("Time elapsed: {} ms", timer.elapsed().as_millis());
+    println!(
+        "Nodes: {}\nTime elapsed: {} ms",
+        perft,
+        timer.elapsed().as_millis()
+    );
 }
 
 fn gen_possible(position: &mut Position, trades_only: bool) -> Vec<HalfMove> {
