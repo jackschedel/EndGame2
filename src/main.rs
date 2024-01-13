@@ -77,6 +77,8 @@ struct PositionTree {
     nodes: Vec<PositionTreeNode>,
     depth: u8,
     position: Position,
+    full_depth_start: usize,
+    full_depth_end: usize,
 }
 
 #[derive(Clone)]
@@ -87,6 +89,7 @@ struct PositionTreeNode {
     top_parent: usize,
     children: Vec<usize>,
     halfmove: HalfMove,
+    is_capture: bool,
 }
 
 impl Color {
@@ -249,6 +252,8 @@ impl PositionTree {
             position,
             nodes: vec![PositionTreeNode::root_node()],
             depth: 0,
+            full_depth_start: 0,
+            full_depth_end: 0,
         }
     }
 
@@ -355,6 +360,8 @@ impl PositionTree {
                     self.nodes[index].top_parent
                 },
                 halfmove: moves[i].clone(),
+                // todo
+                is_capture: false,
             };
             let curr_size = self.nodes.len();
             self.nodes[index].children.push(curr_size);
@@ -367,22 +374,38 @@ impl PositionTree {
             return 0;
         }
 
-        if !trades_only {
-            self.depth += 1;
-        }
-
         if self.nodes.len() == 1 {
             self.gen_children(0, trades_only);
+            self.depth += 1;
+            self.full_depth_start = 1;
+            self.full_depth_end = self.nodes.len() - 1;
+            println!(
+                "start: {}\nend: {}",
+                self.full_depth_start, self.full_depth_end
+            );
             return self.nodes.len() - 1;
         }
 
         let prev_len = self.nodes.len();
 
-        let oldest_ungenned: usize = self.nodes.last().unwrap().parent + 1;
-
-        for i in oldest_ungenned..self.nodes.len() {
+        for i in self.full_depth_start..self.full_depth_end + 1 {
             self.gen_children(i, trades_only);
         }
+
+        if !trades_only {
+            self.depth += 1;
+            self.full_depth_start = self.nodes[self.full_depth_start].children[0];
+            self.full_depth_end = self.nodes[self.full_depth_end]
+                .children
+                .last()
+                .unwrap()
+                .clone();
+        }
+
+        println!(
+            "start: {}\nend: {}",
+            self.full_depth_start, self.full_depth_end
+        );
 
         return self.nodes.len() - prev_len;
     }
@@ -414,6 +437,7 @@ impl PositionTreeNode {
                 to: 63,
                 flag: None,
             },
+            is_capture: false,
         }
     }
 
