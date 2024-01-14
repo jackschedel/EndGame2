@@ -1,5 +1,4 @@
 use hashbrown::{HashMap, HashSet};
-use std::collections::VecDeque;
 use std::io::{self, BufRead};
 use std::str::SplitWhitespace;
 use std::sync::{Arc, Mutex};
@@ -75,11 +74,9 @@ struct Position {
 
 #[derive(Clone)]
 struct PositionTree {
-    nodes: Vec<PositionTreeNode>,
-    depth: u8,
+    nodes: Vec<Vec<PositionTreeNode>>,
     position: Position,
-    full_depth_start: usize,
-    full_depth_end: usize,
+    depth: usize,
 }
 
 #[derive(Clone)]
@@ -87,8 +84,7 @@ struct PositionTreeNode {
     // parent, top_parent, and halfmove for 0th index in nodes don't matter.
     // using option here would be inefficient
     parent: usize,
-    top_parent: usize,
-    children: Vec<usize>,
+    children: Option<(usize, usize)>,
     halfmove: HalfMove,
 }
 
@@ -250,165 +246,83 @@ impl PositionTree {
     fn from_pos(position: Position) -> Self {
         Self {
             position,
-            nodes: vec![PositionTreeNode::root_node()],
+            nodes: vec![vec![PositionTreeNode::root_node()]],
             depth: 0,
-            full_depth_start: 0,
-            full_depth_end: 0,
         }
     }
 
     fn print_tree(&self) {
-        self.print_tree_structure();
-        self.print_tree_nodes();
-    }
-
-    fn print_tree_nodes(&self) {
-        println!();
-        let max_index = self.nodes.len();
-        let digits = if max_index == 0 {
-            1
-        } else {
-            (max_index as f64).log10().ceil() as usize
-        };
-
-        for i in 0..max_index {
-            print!("{:>width$}: ", i, width = digits);
-            self.nodes[i].clone().print_node();
-            if (i + 1) % 8 != 0 {
-                print!("| ");
-            } else {
-                println!();
-            }
-        }
-    }
-
-    fn print_tree_structure(&self) {
-        println!();
-
-        let mut queue = VecDeque::new();
-        let mut current_depth: u8 = 0;
-        let mut last_parent: usize = 0;
-
-        queue.push_back((0, 0));
-
-        while let Some((index, depth)) = queue.pop_front() {
-            if depth != current_depth {
-                println!();
-                println!();
-                current_depth = depth;
-            } else if self.nodes[index].parent != last_parent {
-                print!(" - ");
-            }
-
-            print!("{}", index);
-            last_parent = self.nodes[index].parent;
-
-            for &child_index in &self.nodes[index].children {
-                queue.push_back((child_index, depth + 1));
-            }
-
-            if let Some(&(next_index, _)) = queue.front() {
-                if self.nodes[next_index].parent == last_parent {
-                    print!(" ");
+        for i in 0..self.nodes.len() {
+            println!();
+            println!("Depth: {}", i);
+            for j in 0..self.nodes[i].len() {
+                self.nodes[i][j].print_node();
+                if j != self.nodes[i].len() - 1 {
+                    print!("| ");
                 }
             }
+            println!();
         }
-
         println!();
     }
 
-    fn gen_children(&mut self, index: usize) {
+    fn gen_children(&mut self, depth: usize, index: usize) {
         let mut position = self.position.clone();
 
-        let mut trace = vec![index];
-        while trace[0] != 0 {
-            trace.insert(0, self.nodes[trace[0]].parent);
+        let mut trace = vec![];
+        let mut cur_depth = depth;
+        let mut cur_index = index;
+        while cur_depth > 0 {
+            trace.push(cur_index);
+            cur_index = self.nodes[cur_depth][cur_index].parent;
+
+            cur_depth -= 1;
         }
+        trace.reverse();
 
-        trace.remove(0);
-
+        cur_depth = 1;
         for i in 0..trace.len() {
-            execute_halfmove(&mut position, self.nodes[trace[i]].halfmove);
+            execute_halfmove(&mut position, self.nodes[cur_depth][trace[i]].halfmove);
+            cur_depth += 1;
         }
 
-        let moves;
+        let moves = gen_possible(&mut position);
 
-        if self.nodes[index].halfmove.from == 0 && self.nodes[index].halfmove.to == 0 {
-            return;
-        } else {
-            moves = gen_possible(&mut position);
-        }
+        if !moves.is_empty() {
+            if self.nodes.len() <= depth + 1 {
+                self.nodes.push(vec![]);
+            }
 
-        for i in 0..moves.len() {
-            let child_node = PositionTreeNode {
-                parent: index,
-                children: Vec::new(),
-                top_parent: if index == 0 {
-                    i
-                } else {
-                    self.nodes[index].top_parent
-                },
-                halfmove: moves[i].to_owned(),
-            };
-            let curr_size = self.nodes.len();
-            self.nodes[index].children.push(curr_size);
-            self.nodes.push(child_node);
+            let orig_len = self.nodes[depth + 1].len();
+            for i in 0..moves.len() {
+                let child_node = PositionTreeNode {
+                    parent: index,
+                    halfmove: moves[i].to_owned(),
+                    children: None,
+                };
+                self.nodes[depth + 1].push(child_node);
+            }
+
+            let child_range = Some((orig_len, orig_len + moves.len() - 1));
+            self.nodes[depth][index].children = child_range;
         }
     }
 
-    fn increase_depth(&mut self, trades_only: bool) -> usize {
+    fn increase_depth(&mut self) -> usize {
         if self.nodes.len() == 0 {
             return 0;
         }
 
-        if self.nodes.len() == 1 {
-            self.gen_children(0);
-            self.depth += 1;
-            self.full_depth_start = 1;
-            self.full_depth_end = self.nodes.len() - 1;
-            return self.nodes.len() - 1;
-        }
-
-        let prev_len = self.nodes.len();
-
-        for i in self.full_depth_start..self.full_depth_end + 1 {
-            if !self.nodes[i].children.is_empty() {
+        for i in 0..self.nodes[self.depth].len() {
+            if self.nodes[self.depth][i].children.is_some() {
                 continue;
             }
 
-            if trades_only && !self.nodes[i].halfmove.is_capture {
-                continue;
-            }
-
-            self.gen_children(i);
+            self.gen_children(self.depth, i);
         }
+        self.depth += 1;
 
-        if !trades_only {
-            self.depth += 1;
-            self.full_depth_start = self.nodes[self.full_depth_start].children[0];
-            self.full_depth_end = self.nodes[self.full_depth_end]
-                .children
-                .last()
-                .unwrap()
-                .clone();
-        }
-
-        return self.nodes.len() - prev_len;
-    }
-
-    fn expand_resolve_trades(&mut self) {
-        let mut depth = 0;
-        loop {
-            let genned = self.increase_depth(true);
-            depth += 1;
-
-            println!("info string traderesolve depth {} nodes {}", depth, genned);
-
-            if genned == 0 || (genned > (self.depth as usize) * 20000 && depth >= 6) || depth >= 15
-            {
-                break;
-            }
-        }
+        return self.nodes[self.depth].len();
     }
 }
 
@@ -416,49 +330,22 @@ impl PositionTreeNode {
     fn root_node() -> Self {
         Self {
             parent: 0,
-            top_parent: 0,
-            children: Vec::new(),
             halfmove: HalfMove {
                 from: 63,
                 to: 63,
                 flag: None,
                 is_capture: false,
             },
+            children: None,
         }
     }
 
-    fn print_node(self) {
+    fn print_node(&self) {
         if self.halfmove.to == 63 && self.halfmove.from == 63 {
             print!("root");
         } else {
             print!("{}", self.halfmove.move_to_coords());
         }
-    }
-}
-
-impl fmt::Debug for PositionTree {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut to_print = String::new();
-
-        to_print += &format!("PositionTree:");
-
-        to_print += &format!("\n {} - (root), children: {:?}", 0, self.nodes[0].children);
-
-        for i in 1..self.nodes.len() {
-            to_print += &format!("\n {} - {:?}", i, self.nodes[i]);
-        }
-
-        return write!(f, "{}", to_print);
-    }
-}
-
-impl fmt::Debug for PositionTreeNode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut to_print = String::new();
-
-        to_print += &format!("parent: {}, children: {:?}", self.parent, self.children);
-
-        return write!(f, "{}", to_print);
     }
 }
 
@@ -740,7 +627,7 @@ fn main() {
     // start main program
     shared_flags.lock().unwrap().uci_enabled = true;
     handle_command("position startpos".to_string(), &shared_flags);
-    // print_handle_command("debug on".to_string(), &shared_flags);
+    print_handle_command("go perft 1".to_string(), &shared_flags);
 
     let shared_flags_clone = Arc::clone(&shared_flags);
     while !shared_flags_clone.lock().unwrap().can_quit {
@@ -1548,17 +1435,14 @@ fn go_search(position: Position, node_stop: usize, shared_flags: &Arc<Mutex<Shar
         }
 
         nps_start = Instant::now();
-        leaf_size = tree.increase_depth(false);
+        leaf_size = tree.increase_depth();
 
-        let mut q_tree = tree.clone();
-
-        q_tree.expand_resolve_trades();
-
+        let is_maximizing = tree.position.move_next == Color::White;
         (score, moves) = minimax(
-            &q_tree,
-            &q_tree.position,
+            &mut tree,
             0,
-            q_tree.position.move_next == Color::White,
+            0,
+            is_maximizing,
             i32::MIN,
             i32::MAX,
             depth + 1,
@@ -1624,8 +1508,8 @@ fn print_pv(moves: &Vec<HalfMove>) {
 }
 
 fn minimax(
-    tree: &PositionTree,
-    position: &Position,
+    mut tree: &PositionTree,
+    node_depth: usize,
     node_index: usize,
     is_maximizing: bool,
     mut alpha: i32,
@@ -1633,98 +1517,72 @@ fn minimax(
     depth: usize,
     shared_flags: &Arc<Mutex<SharedFlags>>,
 ) -> (i32, Vec<HalfMove>) {
-    let node = &tree.nodes[node_index];
+    let position = &tree.position;
 
-    if node.children.is_empty() {
-        let eval;
-        if node.halfmove.from == 0 && node.halfmove.to == 0 {
-            let king_pos;
-            if position.move_next == Color::White {
-                king_pos = position.piece_set.white_king;
-            } else {
-                king_pos = position.piece_set.black_king;
-            }
+    let node = &tree.nodes[node_depth][node_index];
 
-            // piece attacked opt notes: only happens on nullmove so fine
-            if is_piece_attacked(king_pos, position.move_next, &position) {
-                if position.move_next == Color::White {
-                    // black checkmates white
-                    eval = -100000;
-                } else {
-                    // white checkmates black
-                    eval = 100000;
-                }
-            } else {
-                // stalemate
-                eval = 0;
-            }
-        } else {
-            eval = position_eval(&position);
+    match shared_flags.lock().unwrap().eval_hash[depth - 1].get(&position.gen_hash()) {
+        Some(hashed) => {
+            // zobrist cache hit
+            return hashed.clone();
         }
-
-        assert_eq!(depth, 0);
-
-        return (eval, vec![node.halfmove.clone()]);
+        None => {}
     }
 
-    // depth == 0 that gets to here are trade resolve partial trees
-    if depth > 0 {
-        match shared_flags.lock().unwrap().eval_hash[depth - 1].get(&position.gen_hash()) {
-            Some(hashed) => {
-                // zobrist cache hit
-                return hashed.clone();
-            }
-            None => {}
-        }
-    }
+    // if node.children.is_none() {
+    let eval = position_eval(&position);
 
-    let mut best_score = if is_maximizing { i32::MIN } else { i32::MAX };
-    let mut best_path = Vec::new();
-
-    for &child_index in &node.children {
-        let child_node = &tree.nodes[child_index];
-        let mut new_pos = position.clone();
-
-        execute_halfmove(&mut new_pos, child_node.halfmove);
-
-        let (child_score, mut child_path) = minimax(
-            tree,
-            &new_pos,
-            child_index,
-            !is_maximizing,
-            alpha,
-            beta,
-            if depth > 0 { depth - 1 } else { 0 },
-            shared_flags,
-        );
-
-        if is_maximizing {
-            if child_score > best_score {
-                best_score = child_score;
-                child_path.insert(0, child_node.halfmove.clone());
-                best_path = child_path;
-            }
-            alpha = alpha.max(best_score);
-        } else {
-            if child_score < best_score {
-                best_score = child_score;
-                child_path.insert(0, child_node.halfmove.clone());
-                best_path = child_path;
-            }
-            beta = beta.min(best_score);
-        }
-
-        if beta <= alpha {
-            break;
-        }
-    }
-
-    if depth > 0 {
-        let zobrist = &mut shared_flags.lock().unwrap().eval_hash;
-        zobrist[depth - 1].insert(position.gen_hash(), (best_score, best_path.clone()));
-    }
-
-    return (best_score, best_path);
+    return (eval, vec![node.halfmove.clone()]);
+    // }
+    //
+    // let mut best_score = if is_maximizing { i32::MIN } else { i32::MAX };
+    // let mut best_path = Vec::new();
+    //
+    // for &child_index in &node.children {
+    //     let child_node = &tree.nodes[child_index];
+    //     let mut new_pos = position.clone();
+    //
+    //     execute_halfmove(&mut new_pos, child_node.halfmove);
+    //
+    //     let (child_score, mut child_path) = minimax(
+    //         tree,
+    //         &new_pos,
+    //         node_depth + 1,
+    //         child_index,
+    //         !is_maximizing,
+    //         alpha,
+    //         beta,
+    //         if depth > 0 { depth - 1 } else { 0 },
+    //         shared_flags,
+    //     );
+    //
+    //     if is_maximizing {
+    //         if child_score > best_score {
+    //             best_score = child_score;
+    //             child_path.insert(0, child_node.halfmove.clone());
+    //             best_path = child_path;
+    //         }
+    //         alpha = alpha.max(best_score);
+    //     } else {
+    //         if child_score < best_score {
+    //             best_score = child_score;
+    //             child_path.insert(0, child_node.halfmove.clone());
+    //             best_path = child_path;
+    //         }
+    //         beta = beta.min(best_score);
+    //     }
+    //
+    //     if beta <= alpha {
+    //         break;
+    //     }
+    // }
+    //
+    // if depth > 0 {
+    //     let zobrist = &mut shared_flags.lock().unwrap().eval_hash;
+    //     zobrist[depth - 1].insert(position.gen_hash(), (best_score, best_path.clone()));
+    // }
+    //
+    // return (best_score, best_path);
 }
 
 fn position_eval(position: &Position) -> i32 {
@@ -1809,7 +1667,7 @@ fn perft_command(position: Position, depth: u8, shared_flags: &Arc<Mutex<SharedF
 
     let mut perft = 0;
     for _ in 0..(depth) {
-        perft = tree.increase_depth(false);
+        perft = tree.increase_depth();
     }
 
     if shared_flags.lock().unwrap().debug_enabled {
