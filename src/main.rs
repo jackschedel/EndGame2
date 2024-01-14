@@ -38,6 +38,7 @@ struct HalfMove {
     from: u8,
     to: u8,
     flag: Option<HalfmoveFlag>,
+    is_capture: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -89,7 +90,6 @@ struct PositionTreeNode {
     top_parent: usize,
     children: Vec<usize>,
     halfmove: HalfMove,
-    is_capture: bool,
 }
 
 impl Color {
@@ -317,7 +317,7 @@ impl PositionTree {
         println!();
     }
 
-    fn gen_children(&mut self, index: usize, trades_only: bool) {
+    fn gen_children(&mut self, index: usize) {
         let mut position = self.position.clone();
 
         let mut trace = vec![index];
@@ -331,25 +331,14 @@ impl PositionTree {
             execute_halfmove(&mut position, self.nodes[trace[i]].halfmove);
         }
 
-        let mut moves;
+        let moves;
 
         if self.nodes[index].halfmove.from == 0 && self.nodes[index].halfmove.to == 0 {
             return;
         } else {
-            moves = gen_possible(&mut position, trades_only);
+            moves = gen_possible(&mut position);
         }
 
-        if moves.is_empty() {
-            if trades_only {
-                return;
-            } else {
-                moves.push(HalfMove {
-                    from: 0,
-                    to: 0,
-                    flag: None,
-                });
-            }
-        }
         for i in 0..moves.len() {
             let child_node = PositionTreeNode {
                 parent: index,
@@ -359,9 +348,7 @@ impl PositionTree {
                 } else {
                     self.nodes[index].top_parent
                 },
-                halfmove: moves[i].clone(),
-                // todo
-                is_capture: false,
+                halfmove: moves[i].to_owned(),
             };
             let curr_size = self.nodes.len();
             self.nodes[index].children.push(curr_size);
@@ -375,21 +362,25 @@ impl PositionTree {
         }
 
         if self.nodes.len() == 1 {
-            self.gen_children(0, trades_only);
+            self.gen_children(0);
             self.depth += 1;
             self.full_depth_start = 1;
             self.full_depth_end = self.nodes.len() - 1;
-            println!(
-                "start: {}\nend: {}",
-                self.full_depth_start, self.full_depth_end
-            );
             return self.nodes.len() - 1;
         }
 
         let prev_len = self.nodes.len();
 
         for i in self.full_depth_start..self.full_depth_end + 1 {
-            self.gen_children(i, trades_only);
+            if !self.nodes[i].children.is_empty() {
+                continue;
+            }
+
+            if trades_only && !self.nodes[i].halfmove.is_capture {
+                continue;
+            }
+
+            self.gen_children(i);
         }
 
         if !trades_only {
@@ -401,11 +392,6 @@ impl PositionTree {
                 .unwrap()
                 .clone();
         }
-
-        println!(
-            "start: {}\nend: {}",
-            self.full_depth_start, self.full_depth_end
-        );
 
         return self.nodes.len() - prev_len;
     }
@@ -436,8 +422,8 @@ impl PositionTreeNode {
                 from: 63,
                 to: 63,
                 flag: None,
+                is_capture: false,
             },
-            is_capture: false,
         }
     }
 
@@ -1121,6 +1107,7 @@ fn string_to_halfmove(
         from: coord1,
         to: coord2,
         flag,
+        is_capture: false,
     });
 }
 
@@ -1835,36 +1822,32 @@ fn perft_command(position: Position, depth: u8, shared_flags: &Arc<Mutex<SharedF
     );
 }
 
-fn gen_possible(position: &mut Position, trades_only: bool) -> Vec<HalfMove> {
-    if position.halfmove_clock == 50 {
-        return vec![];
-    }
+fn gen_possible(position: &mut Position) -> Vec<HalfMove> {
+    let moves: Vec<HalfMove>;
 
-    let mut moves: Vec<HalfMove>;
-    let mut positions: Vec<Position> = Vec::new();
+    moves = gen_pseudolegal_moves(position);
 
-    moves = gen_pseudolegal_moves(position, trades_only);
-
-    for i in moves.iter() {
-        let mut position_copy = position.clone();
-        execute_halfmove(&mut position_copy, *i);
-        positions.push(position_copy);
-    }
-
-    for i in (0..positions.len()).rev() {
-        let king_pos;
-        if position.move_next == Color::White {
-            king_pos = positions[i].piece_set.white_king;
-        } else {
-            king_pos = positions[i].piece_set.black_king;
-        }
-
-        // todo opt out and allow king cap
-        if is_piece_attacked(king_pos, position.move_next, &positions[i]) {
-            positions.remove(i);
-            moves.remove(i);
-        }
-    }
+    // let mut positions: Vec<Position> = Vec::new();
+    // for i in moves.iter() {
+    //     let mut position_copy = position.clone();
+    //     execute_halfmove(&mut position_copy, *i);
+    //     positions.push(position_copy);
+    // }
+    //
+    // for i in (0..positions.len()).rev() {
+    //     let king_pos;
+    //     if position.move_next == Color::White {
+    //         king_pos = positions[i].piece_set.white_king;
+    //     } else {
+    //         king_pos = positions[i].piece_set.black_king;
+    //     }
+    //
+    //     // todo opt out and allow king cap
+    //     if is_piece_attacked(king_pos, position.move_next, &positions[i]) {
+    //         positions.remove(i);
+    //         moves.remove(i);
+    //     }
+    // }
 
     return moves;
 }
@@ -2151,7 +2134,7 @@ fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool
     return false;
 }
 
-fn gen_pseudolegal_moves(position: &Position, trades_only: bool) -> Vec<HalfMove> {
+fn gen_pseudolegal_moves(position: &Position) -> Vec<HalfMove> {
     let color = position.move_next;
 
     let piece_set: HashSet<u8>;
@@ -2167,7 +2150,8 @@ fn gen_pseudolegal_moves(position: &Position, trades_only: bool) -> Vec<HalfMove
     for i in piece_set {
         // gen pseudolegal moves for each piece at index i
         // add each move to moves vector
-        moves.extend(gen_piece_pseudolegal_moves(i, position, trades_only));
+        let result = gen_piece_pseudolegal_moves(i, position);
+        moves.extend(result);
 
         // likely no need to gen new threads here, will likely be suboptimal due to thread overhead.
         // if no need for threads, we can pass moves as an address instead and return nothing
@@ -2177,72 +2161,74 @@ fn gen_pseudolegal_moves(position: &Position, trades_only: bool) -> Vec<HalfMove
         // just a thought, if we make the eval properly, do we even need to check for legality?
     }
 
-    if !trades_only {
-        if color == Color::Black {
-            if position.castling_rights.black.kingside {
-                if position.board[63] == Some(Piece::Rook(Color::Black))
-                    && position.board[62] == None
-                    && position.board[61] == None
-                    && position.board[60] == Some(Piece::King(Color::Black))
-                    && !is_piece_attacked(61, Color::Black, position)
-                    && !is_piece_attacked(62, Color::Black, position)
-                {
-                    moves.push(HalfMove {
-                        from: 60,
-                        to: 63,
-                        flag: Some(HalfmoveFlag::Castle),
-                    });
-                }
+    if color == Color::Black {
+        if position.castling_rights.black.kingside {
+            if position.board[63] == Some(Piece::Rook(Color::Black))
+                && position.board[62] == None
+                && position.board[61] == None
+                && position.board[60] == Some(Piece::King(Color::Black))
+                && !is_piece_attacked(61, Color::Black, position)
+                && !is_piece_attacked(62, Color::Black, position)
+            {
+                moves.push(HalfMove {
+                    from: 60,
+                    to: 63,
+                    flag: Some(HalfmoveFlag::Castle),
+                    is_capture: false,
+                });
             }
+        }
 
-            if position.castling_rights.black.queenside {
-                if position.board[56] == Some(Piece::Rook(Color::Black))
-                    && position.board[57] == None
-                    && position.board[58] == None
-                    && position.board[59] == None
-                    && position.board[60] == Some(Piece::King(Color::Black))
-                    && !is_piece_attacked(59, Color::Black, position)
-                    && !is_piece_attacked(58, Color::Black, position)
-                {
-                    moves.push(HalfMove {
-                        from: 60,
-                        to: 56,
-                        flag: Some(HalfmoveFlag::Castle),
-                    });
-                }
+        if position.castling_rights.black.queenside {
+            if position.board[56] == Some(Piece::Rook(Color::Black))
+                && position.board[57] == None
+                && position.board[58] == None
+                && position.board[59] == None
+                && position.board[60] == Some(Piece::King(Color::Black))
+                && !is_piece_attacked(59, Color::Black, position)
+                && !is_piece_attacked(58, Color::Black, position)
+            {
+                moves.push(HalfMove {
+                    from: 60,
+                    to: 56,
+                    flag: Some(HalfmoveFlag::Castle),
+                    is_capture: false,
+                });
             }
-        } else {
-            if position.castling_rights.white.queenside {
-                if position.board[0] == Some(Piece::Rook(Color::White))
-                    && position.board[1] == None
-                    && position.board[2] == None
-                    && position.board[3] == None
-                    && position.board[4] == Some(Piece::King(Color::White))
-                    && !is_piece_attacked(3, Color::White, position)
-                    && !is_piece_attacked(2, Color::White, position)
-                {
-                    moves.push(HalfMove {
-                        from: 4,
-                        to: 0,
-                        flag: Some(HalfmoveFlag::Castle),
-                    });
-                }
+        }
+    } else {
+        if position.castling_rights.white.queenside {
+            if position.board[0] == Some(Piece::Rook(Color::White))
+                && position.board[1] == None
+                && position.board[2] == None
+                && position.board[3] == None
+                && position.board[4] == Some(Piece::King(Color::White))
+                && !is_piece_attacked(3, Color::White, position)
+                && !is_piece_attacked(2, Color::White, position)
+            {
+                moves.push(HalfMove {
+                    from: 4,
+                    to: 0,
+                    flag: Some(HalfmoveFlag::Castle),
+                    is_capture: false,
+                });
             }
+        }
 
-            if position.castling_rights.white.kingside {
-                if position.board[7] == Some(Piece::Rook(Color::White))
-                    && position.board[6] == None
-                    && position.board[5] == None
-                    && position.board[4] == Some(Piece::King(Color::White))
-                    && !is_piece_attacked(5, Color::White, position)
-                    && !is_piece_attacked(6, Color::White, position)
-                {
-                    moves.push(HalfMove {
-                        from: 4,
-                        to: 7,
-                        flag: Some(HalfmoveFlag::Castle),
-                    });
-                }
+        if position.castling_rights.white.kingside {
+            if position.board[7] == Some(Piece::Rook(Color::White))
+                && position.board[6] == None
+                && position.board[5] == None
+                && position.board[4] == Some(Piece::King(Color::White))
+                && !is_piece_attacked(5, Color::White, position)
+                && !is_piece_attacked(6, Color::White, position)
+            {
+                moves.push(HalfMove {
+                    from: 4,
+                    to: 7,
+                    flag: Some(HalfmoveFlag::Castle),
+                    is_capture: false,
+                });
             }
         }
     }
@@ -2250,11 +2236,7 @@ fn gen_pseudolegal_moves(position: &Position, trades_only: bool) -> Vec<HalfMove
     return moves;
 }
 
-fn gen_piece_pseudolegal_moves(
-    piece_index: u8,
-    position: &Position,
-    trades_only: bool,
-) -> Vec<HalfMove> {
+fn gen_piece_pseudolegal_moves(piece_index: u8, position: &Position) -> Vec<HalfMove> {
     let mut moves;
 
     match position.board[piece_index as usize] {
@@ -2282,18 +2264,11 @@ fn gen_piece_pseudolegal_moves(
         None => panic!("Error, index contained in piece_set has no piece on board!"),
     }
 
-    if trades_only {
-        for i in (0..moves.len()).rev() {
-            if position.board[moves[i].to as usize] == None {
-                moves.remove(i);
-            } else {
-                let from = position.board[moves[i].from as usize].unwrap();
-                let to = position.board[moves[i].to as usize].unwrap();
-
-                if from.get_cp_val() > to.get_cp_val() {
-                    moves.remove(i);
-                }
-            }
+    for i in 0..moves.len() {
+        if position.board[moves[i].to as usize] == None
+            && moves[i].flag != Some(HalfmoveFlag::EnPassant)
+        {
+            moves[i].is_capture = true;
         }
     }
 
@@ -2582,6 +2557,7 @@ fn gen_halfmove(offset: i8, index: u8, position: &Position, moves: &mut Vec<Half
         from: index,
         to: (index as i8 + offset) as u8,
         flag: None,
+        is_capture: false,
     });
 
     return to_return;
@@ -2602,12 +2578,14 @@ fn gen_white_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
                 from: index,
                 to: (index + 8),
                 flag: None,
+                is_capture: false,
             });
             if (index / 8 == 1) && board[(index + 16) as usize] == None {
                 moves.push(HalfMove {
                     from: index,
                     to: (index + 16),
                     flag: Some(HalfmoveFlag::DoublePawnMove),
+                    is_capture: false,
                 });
             }
         } else {
@@ -2616,21 +2594,25 @@ fn gen_white_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
                 from: index,
                 to: (index + 8),
                 flag: Some(HalfmoveFlag::KnightPromotion),
+                is_capture: false,
             });
             moves.push(HalfMove {
                 from: index,
                 to: (index + 8),
                 flag: Some(HalfmoveFlag::BishopPromotion),
+                is_capture: false,
             });
             moves.push(HalfMove {
                 from: index,
                 to: (index + 8),
                 flag: Some(HalfmoveFlag::RookPromotion),
+                is_capture: false,
             });
             moves.push(HalfMove {
                 from: index,
                 to: (index + 8),
                 flag: Some(HalfmoveFlag::QueenPromotion),
+                is_capture: false,
             });
         }
     }
@@ -2651,27 +2633,32 @@ fn gen_white_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
                         from: index,
                         to: (index + 7),
                         flag: Some(HalfmoveFlag::KnightPromotion),
+                        is_capture: false,
                     });
                     moves.push(HalfMove {
                         from: index,
                         to: (index + 7),
                         flag: Some(HalfmoveFlag::BishopPromotion),
+                        is_capture: false,
                     });
                     moves.push(HalfMove {
                         from: index,
                         to: (index + 7),
                         flag: Some(HalfmoveFlag::RookPromotion),
+                        is_capture: false,
                     });
                     moves.push(HalfMove {
                         from: index,
                         to: (index + 7),
                         flag: Some(HalfmoveFlag::QueenPromotion),
+                        is_capture: false,
                     });
                 } else {
                     moves.push(HalfMove {
                         from: index,
                         to: (index + 7),
                         flag: None,
+                        is_capture: false,
                     });
                 }
             }
@@ -2682,6 +2669,7 @@ fn gen_white_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
                     from: index,
                     to: (index + 7),
                     flag: Some(HalfmoveFlag::EnPassant),
+                    is_capture: false,
                 });
             }
         }
@@ -2695,27 +2683,32 @@ fn gen_white_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
                         from: index,
                         to: (index + 9),
                         flag: Some(HalfmoveFlag::KnightPromotion),
+                        is_capture: false,
                     });
                     moves.push(HalfMove {
                         from: index,
                         to: (index + 9),
                         flag: Some(HalfmoveFlag::BishopPromotion),
+                        is_capture: false,
                     });
                     moves.push(HalfMove {
                         from: index,
                         to: (index + 9),
                         flag: Some(HalfmoveFlag::RookPromotion),
+                        is_capture: false,
                     });
                     moves.push(HalfMove {
                         from: index,
                         to: (index + 9),
                         flag: Some(HalfmoveFlag::QueenPromotion),
+                        is_capture: false,
                     });
                 } else {
                     moves.push(HalfMove {
                         from: index,
                         to: (index + 9),
                         flag: None,
+                        is_capture: false,
                     });
                 }
             }
@@ -2726,6 +2719,7 @@ fn gen_white_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
                     from: index,
                     to: (index + 9),
                     flag: Some(HalfmoveFlag::EnPassant),
+                    is_capture: false,
                 });
             }
         }
@@ -2749,12 +2743,14 @@ fn gen_black_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
                 from: index,
                 to: (index - 8),
                 flag: None,
+                is_capture: false,
             });
             if (index / 8 == 6) && board[(index - 16) as usize] == None {
                 moves.push(HalfMove {
                     from: index,
                     to: (index - 16),
                     flag: Some(HalfmoveFlag::DoublePawnMove),
+                    is_capture: false,
                 });
             }
         } else {
@@ -2763,21 +2759,25 @@ fn gen_black_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
                 from: index,
                 to: (index - 8),
                 flag: Some(HalfmoveFlag::KnightPromotion),
+                is_capture: false,
             });
             moves.push(HalfMove {
                 from: index,
                 to: (index - 8),
                 flag: Some(HalfmoveFlag::BishopPromotion),
+                is_capture: false,
             });
             moves.push(HalfMove {
                 from: index,
                 to: (index - 8),
                 flag: Some(HalfmoveFlag::RookPromotion),
+                is_capture: false,
             });
             moves.push(HalfMove {
                 from: index,
                 to: (index - 8),
                 flag: Some(HalfmoveFlag::QueenPromotion),
+                is_capture: false,
             });
         }
     }
@@ -2798,27 +2798,32 @@ fn gen_black_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
                         from: index,
                         to: (index - 9),
                         flag: Some(HalfmoveFlag::KnightPromotion),
+                        is_capture: false,
                     });
                     moves.push(HalfMove {
                         from: index,
                         to: (index - 9),
                         flag: Some(HalfmoveFlag::BishopPromotion),
+                        is_capture: false,
                     });
                     moves.push(HalfMove {
                         from: index,
                         to: (index - 9),
                         flag: Some(HalfmoveFlag::RookPromotion),
+                        is_capture: false,
                     });
                     moves.push(HalfMove {
                         from: index,
                         to: (index - 9),
                         flag: Some(HalfmoveFlag::QueenPromotion),
+                        is_capture: false,
                     });
                 } else {
                     moves.push(HalfMove {
                         from: index,
                         to: (index - 9),
                         flag: None,
+                        is_capture: false,
                     });
                 }
             }
@@ -2829,6 +2834,7 @@ fn gen_black_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
                     from: index,
                     to: (index - 9),
                     flag: Some(HalfmoveFlag::EnPassant),
+                    is_capture: false,
                 });
             }
         }
@@ -2842,27 +2848,32 @@ fn gen_black_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
                         from: index,
                         to: (index - 7),
                         flag: Some(HalfmoveFlag::KnightPromotion),
+                        is_capture: false,
                     });
                     moves.push(HalfMove {
                         from: index,
                         to: (index - 7),
                         flag: Some(HalfmoveFlag::BishopPromotion),
+                        is_capture: false,
                     });
                     moves.push(HalfMove {
                         from: index,
                         to: (index - 7),
                         flag: Some(HalfmoveFlag::RookPromotion),
+                        is_capture: false,
                     });
                     moves.push(HalfMove {
                         from: index,
                         to: (index - 7),
                         flag: Some(HalfmoveFlag::QueenPromotion),
+                        is_capture: false,
                     });
                 } else {
                     moves.push(HalfMove {
                         from: index,
                         to: (index - 7),
                         flag: None,
+                        is_capture: false,
                     });
                 }
             }
@@ -2873,6 +2884,7 @@ fn gen_black_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
                     from: index,
                     to: (index - 7),
                     flag: Some(HalfmoveFlag::EnPassant),
+                    is_capture: false,
                 });
             }
         }
