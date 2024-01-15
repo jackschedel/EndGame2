@@ -570,7 +570,8 @@ struct SharedFlags {
     ponder_hit: bool,
     position: Position,
     options: EngineOptions,
-    eval_hash: Vec<HashMap<u64, (i32, Vec<HalfMove>)>>,
+    eval_map: Vec<HashMap<u64, (i32, Vec<HalfMove>)>>,
+    repetition_map: HashMap<u64, u8>,
 }
 
 fn main() {
@@ -615,7 +616,8 @@ fn main() {
             debug_sets_display: false,
             debug_use_symbols: false,
         },
-        eval_hash: vec![HashMap::new()],
+        eval_map: vec![HashMap::new()],
+        repetition_map: HashMap::new(),
     }));
 
     let shared_flags_clone = Arc::clone(&shared_flags);
@@ -739,6 +741,11 @@ fn position_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Shar
         _ => println!("Position command improperly formatted!"),
     }
 
+    let mut flags = shared_flags.lock().unwrap();
+    flags.repetition_map = HashMap::new();
+    let hash = flags.position.gen_hash();
+    *flags.repetition_map.entry(hash).or_insert(0) += 1;
+
     handle_move_tokens(command, shared_flags);
 }
 
@@ -755,6 +762,11 @@ fn handle_move_tokens(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Sh
             let mut position = shared_flags.lock().unwrap().position.clone();
             execute_halfmove(&mut position, parsed_move.unwrap());
             shared_flags.lock().unwrap().position = position;
+
+            let mut flags = shared_flags.lock().unwrap();
+            let hash = flags.position.gen_hash();
+            *flags.repetition_map.entry(hash).or_insert(0) += 1;
+
             display_debug(shared_flags);
         }
 
@@ -1447,8 +1459,8 @@ fn go_search(
 
     start_time = Instant::now();
     loop {
-        if shared_flags.lock().unwrap().eval_hash.len() <= depth + 1 {
-            let zobrist = &mut shared_flags.lock().unwrap().eval_hash;
+        if shared_flags.lock().unwrap().eval_map.len() <= depth + 1 {
+            let zobrist = &mut shared_flags.lock().unwrap().eval_map;
             zobrist.push(HashMap::new())
         }
 
@@ -1550,7 +1562,7 @@ fn minimax(
     shared_flags: &Arc<Mutex<SharedFlags>>,
 ) -> (i32, Vec<HalfMove>) {
     if depth > 0 {
-        match shared_flags.lock().unwrap().eval_hash[depth - 1].get(&position.gen_hash()) {
+        match shared_flags.lock().unwrap().eval_map[depth - 1].get(&position.gen_hash()) {
             Some(hashed) => {
                 // zobrist cache hit
                 return hashed.clone();
@@ -1626,7 +1638,7 @@ fn minimax(
     }
 
     if depth > 0 {
-        let zobrist = &mut shared_flags.lock().unwrap().eval_hash;
+        let zobrist = &mut shared_flags.lock().unwrap().eval_map;
         zobrist[depth - 1].insert(position.gen_hash(), (best_score, best_path.clone()));
     }
 
