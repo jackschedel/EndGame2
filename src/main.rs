@@ -2,7 +2,7 @@ use hashbrown::{HashMap, HashSet};
 use std::io::{self, BufRead};
 use std::str::SplitWhitespace;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use std::{fmt, thread};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -627,7 +627,6 @@ fn main() {
     // start main program
     shared_flags.lock().unwrap().uci_enabled = true;
     handle_command("position startpos".to_string(), &shared_flags);
-    print_handle_command("go perft 1".to_string(), &shared_flags);
 
     let shared_flags_clone = Arc::clone(&shared_flags);
     while !shared_flags_clone.lock().unwrap().can_quit {
@@ -1405,13 +1404,25 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
             }
         }
         None | Some("infinite") => {
-            go_search(position, 175000, shared_flags);
+            go_search(position, None, None, None, shared_flags);
         }
 
         Some("nodes") => {
             go_search(
                 position,
-                command.next().unwrap().parse::<usize>().unwrap(),
+                Some(command.next().unwrap().parse::<usize>().unwrap()),
+                None,
+                None,
+                shared_flags,
+            );
+        }
+
+        Some("depth") => {
+            go_search(
+                position,
+                None,
+                Some(command.next().unwrap().parse::<usize>().unwrap()),
+                None,
                 shared_flags,
             );
         }
@@ -1419,7 +1430,13 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
     }
 }
 
-fn go_search(position: Position, node_stop: usize, shared_flags: &Arc<Mutex<SharedFlags>>) {
+fn go_search(
+    position: Position,
+    node_stop: Option<usize>,
+    depth_stop: Option<usize>,
+    time_stop: Option<Duration>,
+    shared_flags: &Arc<Mutex<SharedFlags>>,
+) {
     let mut tree = PositionTree::from_pos(position);
     let mut moves;
     let mut score;
@@ -1428,7 +1445,7 @@ fn go_search(position: Position, node_stop: usize, shared_flags: &Arc<Mutex<Shar
     let start_time;
     let mut nps_start;
 
-    start_time = Instant::now();
+    start_time = depth::now();
     loop {
         if shared_flags.lock().unwrap().eval_hash.len() <= depth + 1 {
             let zobrist = &mut shared_flags.lock().unwrap().eval_hash;
@@ -1461,7 +1478,10 @@ fn go_search(position: Position, node_stop: usize, shared_flags: &Arc<Mutex<Shar
             leaf_size += tree.nodes[i].len();
         }
 
-        if leaf_size >= node_stop || score.abs() == 100000 || depth == 20 {
+        if score.abs() == 100000
+            || (node_stop.is_some() && node_stop.unwrap() <= leaf_size)
+            || (depth_stop.is_some() && depth_stop.unwrap() <= depth)
+        {
             break;
         } else if start_time.elapsed().as_millis() > 0 {
             println!(
