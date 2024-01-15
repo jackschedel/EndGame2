@@ -1445,7 +1445,7 @@ fn go_search(
     let start_time;
     let mut nps_start;
 
-    start_time = depth::now();
+    start_time = Instant::now();
     loop {
         if shared_flags.lock().unwrap().eval_hash.len() <= depth + 1 {
             let zobrist = &mut shared_flags.lock().unwrap().eval_hash;
@@ -1503,9 +1503,9 @@ fn go_search(
         start_time.elapsed().as_millis()
     );
 
-    if score == 100000 {
+    if score == 30000 {
         print!("score mate {} ", depth / 2);
-    } else if score == -100000 {
+    } else if score == -30000 {
         print!("score mate -{} ", depth / 2);
     } else {
         print!("score cp {} ", score);
@@ -1515,7 +1515,7 @@ fn go_search(
 
     print!("bestmove {} ", moves[0].move_to_coords(),);
 
-    if moves.len() > 2 && moves[2].move_to_coords() != "a1a1" {
+    if moves.len() > 1 && moves[1].move_to_coords() != "a1a1" {
         println!("ponder {}", moves[1].move_to_coords())
     } else {
         println!();
@@ -1635,6 +1635,11 @@ fn minimax(
 
 fn position_eval(position: &Position) -> i32 {
     let mut eval = 0;
+
+    if position.halfmove_clock >= 50 {
+        return 0;
+    }
+
     for &i in position.piece_set.white.iter() {
         eval += get_piece_value(position.board[i as usize].unwrap(), i);
     }
