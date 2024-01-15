@@ -1424,10 +1424,11 @@ fn go_search(position: Position, node_stop: usize, shared_flags: &Arc<Mutex<Shar
     let mut moves;
     let mut score;
     let mut depth = 0;
-    let mut leaf_size;
-    let start_time = Instant::now();
+    let mut leaf_size: usize;
+    let start_time;
     let mut nps_start;
 
+    start_time = Instant::now();
     loop {
         if shared_flags.lock().unwrap().eval_hash.len() <= depth + 1 {
             let zobrist = &mut shared_flags.lock().unwrap().eval_hash;
@@ -1435,22 +1436,32 @@ fn go_search(position: Position, node_stop: usize, shared_flags: &Arc<Mutex<Shar
         }
 
         nps_start = Instant::now();
-        leaf_size = tree.increase_depth();
 
         let is_maximizing = tree.position.move_next == Color::White;
+        let start_pos = tree.position.clone();
+
         (score, moves) = minimax(
             &mut tree,
+            start_pos,
             0,
             0,
             is_maximizing,
             i32::MIN,
             i32::MAX,
-            depth + 1,
+            depth,
             shared_flags,
         );
 
         depth += 1;
-        if leaf_size > node_stop || score.abs() == 100000 || depth == 20 {
+        tree.depth += 1;
+
+        leaf_size = 0;
+
+        for i in 0..tree.nodes.len() {
+            leaf_size += tree.nodes[i].len();
+        }
+
+        if leaf_size >= node_stop || score.abs() == 100000 || depth == 20 {
             break;
         } else if start_time.elapsed().as_millis() > 0 {
             println!(
@@ -1508,7 +1519,8 @@ fn print_pv(moves: &Vec<HalfMove>) {
 }
 
 fn minimax(
-    mut tree: &PositionTree,
+    tree: &mut PositionTree,
+    position: Position,
     node_depth: usize,
     node_index: usize,
     is_maximizing: bool,
@@ -1517,72 +1529,88 @@ fn minimax(
     depth: usize,
     shared_flags: &Arc<Mutex<SharedFlags>>,
 ) -> (i32, Vec<HalfMove>) {
-    let position = &tree.position;
-
-    let node = &tree.nodes[node_depth][node_index];
-
-    match shared_flags.lock().unwrap().eval_hash[depth - 1].get(&position.gen_hash()) {
-        Some(hashed) => {
-            // zobrist cache hit
-            return hashed.clone();
+    if depth > 0 {
+        match shared_flags.lock().unwrap().eval_hash[depth - 1].get(&position.gen_hash()) {
+            Some(hashed) => {
+                // zobrist cache hit
+                return hashed.clone();
+            }
+            None => {}
         }
-        None => {}
     }
 
-    // if node.children.is_none() {
-    let eval = position_eval(&position);
+    if tree.nodes[node_depth][node_index].children.is_none() {
+        tree.gen_children(node_depth, node_index);
+    }
 
-    return (eval, vec![node.halfmove.clone()]);
-    // }
-    //
-    // let mut best_score = if is_maximizing { i32::MIN } else { i32::MAX };
-    // let mut best_path = Vec::new();
-    //
-    // for &child_index in &node.children {
-    //     let child_node = &tree.nodes[child_index];
-    //     let mut new_pos = position.clone();
-    //
-    //     execute_halfmove(&mut new_pos, child_node.halfmove);
-    //
-    //     let (child_score, mut child_path) = minimax(
-    //         tree,
-    //         &new_pos,
-    //         node_depth + 1,
-    //         child_index,
-    //         !is_maximizing,
-    //         alpha,
-    //         beta,
-    //         if depth > 0 { depth - 1 } else { 0 },
-    //         shared_flags,
-    //     );
-    //
-    //     if is_maximizing {
-    //         if child_score > best_score {
-    //             best_score = child_score;
-    //             child_path.insert(0, child_node.halfmove.clone());
-    //             best_path = child_path;
-    //         }
-    //         alpha = alpha.max(best_score);
-    //     } else {
-    //         if child_score < best_score {
-    //             best_score = child_score;
-    //             child_path.insert(0, child_node.halfmove.clone());
-    //             best_path = child_path;
-    //         }
-    //         beta = beta.min(best_score);
-    //     }
-    //
-    //     if beta <= alpha {
-    //         break;
-    //     }
-    // }
-    //
-    // if depth > 0 {
-    //     let zobrist = &mut shared_flags.lock().unwrap().eval_hash;
-    //     zobrist[depth - 1].insert(position.gen_hash(), (best_score, best_path.clone()));
-    // }
-    //
-    // return (best_score, best_path);
+    let mut to_search = vec![];
+    if tree.nodes[node_depth][node_index].children.is_some() {
+        let children = tree.nodes[node_depth][node_index].children.unwrap().clone();
+        for i in children.0..children.1 + 1 {
+            if depth > 0
+                || position.board[tree.nodes[node_depth + 1][i].halfmove.to as usize] != None
+            {
+                to_search.push(i);
+            }
+        }
+    }
+
+    if to_search.is_empty() {
+        let eval = position_eval(&position);
+        return (
+            eval,
+            vec![tree.nodes[node_depth][node_index].halfmove.clone()],
+        );
+    }
+
+    let mut best_score = if is_maximizing { i32::MIN } else { i32::MAX };
+    let mut best_path = Vec::new();
+
+    for i in 0..to_search.len() {
+        let mut new_pos = position.clone();
+
+        let halfmove = tree.nodes[node_depth + 1][to_search[i]].halfmove;
+        execute_halfmove(&mut new_pos, halfmove);
+
+        let (child_score, mut child_path) = minimax(
+            tree,
+            new_pos,
+            node_depth + 1,
+            to_search[i],
+            !is_maximizing,
+            alpha,
+            beta,
+            if depth > 0 { depth - 1 } else { 0 },
+            shared_flags,
+        );
+
+        if is_maximizing {
+            if child_score > best_score {
+                best_score = child_score;
+                child_path.insert(0, halfmove);
+                best_path = child_path;
+            }
+            alpha = alpha.max(best_score);
+        } else {
+            if child_score < best_score {
+                best_score = child_score;
+                child_path.insert(0, halfmove);
+                best_path = child_path;
+            }
+            beta = beta.min(best_score);
+        }
+
+        if beta <= alpha {
+            break;
+        }
+    }
+
+    if depth > 0 {
+        let zobrist = &mut shared_flags.lock().unwrap().eval_hash;
+        zobrist[depth - 1].insert(position.gen_hash(), (best_score, best_path.clone()));
+    }
+
+    return (best_score, best_path);
 }
 
 fn position_eval(position: &Position) -> i32 {
