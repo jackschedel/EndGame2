@@ -629,6 +629,8 @@ fn main() {
     // start main program
     shared_flags.lock().unwrap().uci_enabled = true;
     handle_command("position startpos".to_string(), &shared_flags);
+    print_handle_command("debug on".to_string(), &shared_flags);
+    print_handle_command("moves b1c3 g8f6 c3b1 f6g8".to_string(), &shared_flags);
 
     let shared_flags_clone = Arc::clone(&shared_flags);
     while !shared_flags_clone.lock().unwrap().can_quit {
@@ -741,10 +743,9 @@ fn position_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Shar
         _ => println!("Position command improperly formatted!"),
     }
 
-    let mut flags = shared_flags.lock().unwrap();
-    flags.repetition_map = HashMap::new();
-    let hash = flags.position.gen_hash();
-    *flags.repetition_map.entry(hash).or_insert(0) += 1;
+    shared_flags.lock().unwrap().repetition_map = HashMap::new();
+    let hash = shared_flags.lock().unwrap().position.gen_hash();
+    shared_flags.lock().unwrap().repetition_map.insert(hash, 1);
 
     handle_move_tokens(command, shared_flags);
 }
@@ -763,9 +764,8 @@ fn handle_move_tokens(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Sh
             execute_halfmove(&mut position, parsed_move.unwrap());
             shared_flags.lock().unwrap().position = position;
 
-            let mut flags = shared_flags.lock().unwrap();
-            let hash = flags.position.gen_hash();
-            *flags.repetition_map.entry(hash).or_insert(0) += 1;
+            let hash = shared_flags.lock().unwrap().position.gen_hash();
+            *shared_flags.lock().unwrap().repetition_map.entry(hash).or_insert(0) += 1;
 
             display_debug(shared_flags);
         }
@@ -1588,7 +1588,7 @@ fn minimax(
     }
 
     if to_search.is_empty() {
-        let eval = position_eval(&position);
+        let eval = position_eval(&position, shared_flags);
         return (
             eval,
             vec![tree.nodes[node_depth][node_index].halfmove.clone()],
@@ -1645,11 +1645,20 @@ fn minimax(
     return (best_score, best_path);
 }
 
-fn position_eval(position: &Position) -> i32 {
+fn position_eval(position: &Position, shared_flags: &Arc<Mutex<SharedFlags>>) -> i32 {
     let mut eval = 0;
 
+    // 50-move rule
     if position.halfmove_clock >= 50 {
         return 0;
+    }
+
+    // threefold repetition
+    let hash = position.gen_hash();
+    if let Some(&count) = shared_flags.lock().unwrap().repetition_map.get(&hash) {
+        if count >= 2 {
+            return 0;
+        }
     }
 
     for &i in position.piece_set.white.iter() {
@@ -1749,28 +1758,6 @@ fn gen_possible(position: &mut Position) -> Vec<HalfMove> {
     let moves: Vec<HalfMove>;
 
     moves = gen_pseudolegal_moves(position);
-
-    // let mut positions: Vec<Position> = Vec::new();
-    // for i in moves.iter() {
-    //     let mut position_copy = position.clone();
-    //     execute_halfmove(&mut position_copy, *i);
-    //     positions.push(position_copy);
-    // }
-    //
-    // for i in (0..positions.len()).rev() {
-    //     let king_pos;
-    //     if position.move_next == Color::White {
-    //         king_pos = positions[i].piece_set.white_king;
-    //     } else {
-    //         king_pos = positions[i].piece_set.black_king;
-    //     }
-    //
-    //     // todo opt out and allow king cap
-    //     if is_piece_attacked(king_pos, position.move_next, &positions[i]) {
-    //         positions.remove(i);
-    //         moves.remove(i);
-    //     }
-    // }
 
     return moves;
 }
