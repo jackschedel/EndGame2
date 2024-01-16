@@ -629,8 +629,6 @@ fn main() {
     // start main program
     shared_flags.lock().unwrap().uci_enabled = true;
     handle_command("position startpos".to_string(), &shared_flags);
-    print_handle_command("debug on".to_string(), &shared_flags);
-    print_handle_command("moves b1c3 g8f6 c3b1 f6g8".to_string(), &shared_flags);
 
     let shared_flags_clone = Arc::clone(&shared_flags);
     while !shared_flags_clone.lock().unwrap().can_quit {
@@ -765,7 +763,12 @@ fn handle_move_tokens(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Sh
             shared_flags.lock().unwrap().position = position;
 
             let hash = shared_flags.lock().unwrap().position.gen_hash();
-            *shared_flags.lock().unwrap().repetition_map.entry(hash).or_insert(0) += 1;
+            *shared_flags
+                .lock()
+                .unwrap()
+                .repetition_map
+                .entry(hash)
+                .or_insert(0) += 1;
 
             display_debug(shared_flags);
         }
@@ -1415,7 +1418,7 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
                 println!("Error: Depth not specified for perft command!");
             }
         }
-        None | Some("infinite") => {
+        Some("infinite") => {
             go_search(position, None, None, None, shared_flags);
         }
 
@@ -1437,6 +1440,9 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
                 None,
                 shared_flags,
             );
+        }
+        None => {
+            go_search(position, Some(500000), None, None, shared_flags);
         }
         _ => println!("Go command improperly formatted!"),
     }
@@ -1490,7 +1496,7 @@ fn go_search(
             leaf_size += tree.nodes[i].len();
         }
 
-        if score.abs() == 100000
+        if score.abs() >= 30000
             || (node_stop.is_some() && node_stop.unwrap() <= leaf_size)
             || (depth_stop.is_some() && depth_stop.unwrap() <= depth)
         {
@@ -1515,15 +1521,17 @@ fn go_search(
         start_time.elapsed().as_millis()
     );
 
-    if score == 30000 {
-        print!("score mate {} ", depth / 2);
-    } else if score == -30000 {
-        print!("score mate -{} ", depth / 2);
+    if depth <= 2 {
+        depth = 3;
+    }
+    if score >= 30000 {
+        print!("score mate {} ", (depth - 1) / 2);
+    } else if score <= -30000 {
+        print!("score mate -{} ", (depth - 1) / 2);
     } else {
         print!("score cp {} ", score);
+        print_pv(&moves);
     }
-
-    print_pv(&moves);
 
     print!("bestmove {} ", moves[0].move_to_coords(),);
 
@@ -1603,6 +1611,13 @@ fn minimax(
 
         let halfmove = tree.nodes[node_depth + 1][to_search[i]].halfmove;
         execute_halfmove(&mut new_pos, halfmove);
+
+        // no more computations if found mate
+        if is_maximizing && alpha >= 30000 {
+            return (alpha, best_path);
+        } else if !is_maximizing && beta <= -30000 {
+            return (beta, best_path);
+        }
 
         let (child_score, mut child_path) = minimax(
             tree,
