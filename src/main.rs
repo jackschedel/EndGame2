@@ -81,7 +81,7 @@ struct PositionTree {
 
 #[derive(Clone)]
 struct PositionTreeNode {
-    // parent, top_parent, and halfmove for 0th index in nodes don't matter.
+    // parent, top_parent, and halfmove for root don't matter.
     // using option here would be inefficient
     parent: usize,
     children: Option<(usize, usize)>,
@@ -1432,6 +1432,12 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
             );
         }
 
+        Some("wtime") => {
+            let parsed = command.next().unwrap().parse::<u64>().unwrap();
+            let term_time = Some(Instant::now() + Duration::from_millis(parsed));
+
+            go_search(position, None, None, term_time, shared_flags);
+        }
         Some("depth") => {
             go_search(
                 position,
@@ -1452,7 +1458,7 @@ fn go_search(
     position: Position,
     node_stop: Option<usize>,
     depth_stop: Option<usize>,
-    time_stop: Option<Duration>,
+    time_stop: Option<Instant>,
     shared_flags: &Arc<Mutex<SharedFlags>>,
 ) {
     let mut tree = PositionTree::from_pos(position);
@@ -1462,6 +1468,8 @@ fn go_search(
     let mut leaf_size: usize;
     let start_time;
     let mut nps_start;
+    let mut prev_score = 0;
+    let mut prev_moves = vec![];
 
     start_time = Instant::now();
     loop {
@@ -1481,10 +1489,11 @@ fn go_search(
             0,
             0,
             is_maximizing,
-            i32::MIN,
+            i32::MIN + 1,
             i32::MAX,
             depth,
             shared_flags,
+            time_stop,
         );
 
         depth += 1;
@@ -1494,6 +1503,20 @@ fn go_search(
 
         for i in 0..tree.nodes.len() {
             leaf_size += tree.nodes[i].len();
+        }
+
+        if time_stop.is_some() && time_stop.unwrap() <= Instant::now() {
+            depth -= 1;
+            tree.depth -= 1;
+            if score.abs() == i32::MAX {
+                score = prev_score;
+                moves = prev_moves.clone();
+                println!("Debug: Reverting to previous depth!");
+            }
+            break;
+        } else {
+            prev_score = score;
+            prev_moves = moves.clone();
         }
 
         if score.abs() >= 30000
@@ -1568,6 +1591,7 @@ fn minimax(
     mut beta: i32,
     depth: usize,
     shared_flags: &Arc<Mutex<SharedFlags>>,
+    term_time: Option<Instant>,
 ) -> (i32, Vec<HalfMove>) {
     if depth > 0 {
         match shared_flags.lock().unwrap().eval_map[depth - 1].get(&position.gen_hash()) {
@@ -1577,6 +1601,17 @@ fn minimax(
             }
             None => {}
         }
+    }
+
+    if term_time.is_some() && term_time.unwrap() < Instant::now() {
+        return (
+            if is_maximizing {
+                i32::MIN + 1
+            } else {
+                i32::MAX
+            },
+            vec![tree.nodes[node_depth][node_index].halfmove.clone()],
+        );
     }
 
     if tree.nodes[node_depth][node_index].children.is_none() {
@@ -1603,7 +1638,11 @@ fn minimax(
         );
     }
 
-    let mut best_score = if is_maximizing { i32::MIN } else { i32::MAX };
+    let mut best_score = if is_maximizing {
+        i32::MIN + 1
+    } else {
+        i32::MAX
+    };
     let mut best_path = Vec::new();
 
     for i in 0..to_search.len() {
@@ -1629,6 +1668,7 @@ fn minimax(
             beta,
             if depth > 0 { depth - 1 } else { 0 },
             shared_flags,
+            term_time,
         );
 
         if is_maximizing {
@@ -1649,6 +1689,10 @@ fn minimax(
 
         if beta <= alpha {
             break;
+        }
+
+        if term_time.is_some() && term_time.unwrap() < Instant::now() {
+            return (best_score, best_path);
         }
     }
 
