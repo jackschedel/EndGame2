@@ -678,7 +678,10 @@ fn parse_command(
         "isready" => isready_command(shared_flags),
         "setoption" => setoption_command(&mut command, shared_flags),
         "register" => register_command(&mut command, shared_flags),
-        "ucinewgame" => {}
+        "ucinewgame" => {
+            // clear zobrist
+            shared_flags.lock().unwrap().eval_map = vec![HashMap::new()];
+        }
         "position" => position_command(&mut command, shared_flags),
         "go" => go_command(&mut command, shared_flags),
         "stop" => stop_command(shared_flags),
@@ -1435,7 +1438,7 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
             );
         }
 
-        Some("wtime") => {
+        Some("movetime") => {
             let parsed = command.next().unwrap().parse::<u64>().unwrap();
             let term_time = Some(Instant::now() + Duration::from_millis(parsed));
 
@@ -1454,6 +1457,10 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
             go_search(position, Some(500000), None, None, shared_flags);
         }
         _ => println!("Go command improperly formatted!"),
+    }
+
+    if shared_flags.lock().unwrap().should_quit == true {
+        shared_flags.lock().unwrap().can_quit = true;
     }
 }
 
@@ -2895,9 +2902,6 @@ fn gen_black_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
 fn quit_command(shared_flags: &Arc<Mutex<SharedFlags>>) {
     shared_flags.lock().unwrap().should_stop = true;
     shared_flags.lock().unwrap().should_quit = true;
-
-    // TODO: remove this line, should be set once computations are stored
-    shared_flags.lock().unwrap().can_quit = true;
 }
 
 fn register_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlags>>) {
