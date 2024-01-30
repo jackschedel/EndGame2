@@ -77,6 +77,7 @@ struct PositionTree {
     nodes: Vec<Vec<PositionTreeNode>>,
     position: Position,
     depth: usize,
+    leaf_size: usize,
 }
 
 #[derive(Clone)]
@@ -249,6 +250,7 @@ impl PositionTree {
             position,
             nodes: vec![vec![PositionTreeNode::root_node()]],
             depth: 0,
+            leaf_size: 0,
         }
     }
 
@@ -288,6 +290,8 @@ impl PositionTree {
         }
 
         let moves = gen_possible(&mut position);
+
+        self.leaf_size += moves.len();
 
         if !moves.is_empty() {
             if self.nodes.len() <= depth + 1 {
@@ -1488,7 +1492,6 @@ fn go_search(
     let mut moves;
     let mut score;
     let mut depth = 0;
-    let mut leaf_size: usize;
     let start_time;
     let mut nps_start;
     let mut prev_score = 0;
@@ -1524,16 +1527,11 @@ fn go_search(
             depth,
             shared_flags,
             time_stop,
+            node_stop,
         );
 
         depth += 1;
         tree.depth += 1;
-
-        leaf_size = 0;
-
-        for i in 0..tree.nodes.len() {
-            leaf_size += tree.nodes[i].len();
-        }
 
         if time_stop.is_some() && time_stop.unwrap() <= Instant::now() {
             depth -= 1;
@@ -1550,7 +1548,7 @@ fn go_search(
         }
 
         if score.abs() >= 30000
-            || (node_stop.is_some() && node_stop.unwrap() <= leaf_size)
+            || (node_stop.is_some() && node_stop.unwrap() <= tree.leaf_size)
             || (depth_stop.is_some() && depth_stop.unwrap() <= depth)
             || shared_flags.lock().unwrap().should_stop
         {
@@ -1559,8 +1557,9 @@ fn go_search(
             println!(
                 "info depth {} nodes {} nps {} score {} currmove {}",
                 depth,
-                leaf_size,
-                ((leaf_size as f64 / nps_start.elapsed().as_nanos() as f64) * 1000000000.0) as u32,
+                tree.leaf_size,
+                ((tree.leaf_size as f64 / nps_start.elapsed().as_nanos() as f64) * 1000000000.0)
+                    as u32,
                 score,
                 moves[0].move_to_coords()
             );
@@ -1570,8 +1569,8 @@ fn go_search(
     print!(
         "info depth {} nodes {} nps {} time {} ",
         depth,
-        leaf_size,
-        ((leaf_size as f64 / nps_start.elapsed().as_nanos() as f64) * 1000000000.0) as u32,
+        tree.leaf_size,
+        ((tree.leaf_size as f64 / nps_start.elapsed().as_nanos() as f64) * 1000000000.0) as u32,
         start_time.elapsed().as_millis()
     );
 
@@ -1623,6 +1622,7 @@ fn minimax(
     depth: usize,
     shared_flags: &Arc<Mutex<SharedFlags>>,
     term_time: Option<Instant>,
+    term_nodes: Option<usize>,
 ) -> (i32, Vec<HalfMove>) {
     if depth > 0 {
         match shared_flags.lock().unwrap().eval_map[depth - 1].get(&position.gen_hash()) {
@@ -1637,6 +1637,7 @@ fn minimax(
 
     if (term_time.is_some() && term_time.unwrap() < Instant::now())
         || shared_flags.lock().unwrap().should_stop
+        || (term_nodes.is_some() && term_nodes.unwrap() < tree.leaf_size)
     {
         let eval = if is_maximizing {
             i32::MIN + 1
@@ -1717,6 +1718,7 @@ fn minimax(
             if depth > 0 { depth - 1 } else { 0 },
             shared_flags,
             term_time,
+            term_nodes,
         );
 
         if is_maximizing {
@@ -1741,7 +1743,8 @@ fn minimax(
 
         // note: no need to early return if finished loop anyways, so check for all but last iter
         if ((term_time.is_some() && term_time.unwrap() < Instant::now())
-            || shared_flags.lock().unwrap().should_stop)
+            || shared_flags.lock().unwrap().should_stop
+            || (term_nodes.is_some() && term_nodes.unwrap() < tree.leaf_size))
             && i < to_search.len() - 1
         {
             // note: won't be sorted if early return.
