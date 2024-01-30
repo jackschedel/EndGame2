@@ -87,7 +87,7 @@ struct PositionTreeNode {
     parent: usize,
     children: Option<(usize, usize)>,
     halfmove: HalfMove,
-    score: i32,
+    score: Option<i32>,
 }
 
 impl Color {
@@ -304,7 +304,7 @@ impl PositionTree {
                     parent: index,
                     halfmove: moves[i].to_owned(),
                     children: None,
-                    score: 0,
+                    score: None,
                 };
                 self.nodes[depth + 1].push(child_node);
             }
@@ -343,7 +343,7 @@ impl PositionTreeNode {
                 is_capture: false,
             },
             children: None,
-            score: 0,
+            score: None,
         }
     }
 
@@ -1533,36 +1533,33 @@ fn go_search(
         depth += 1;
         tree.depth += 1;
 
-        if time_stop.is_some() && time_stop.unwrap() <= Instant::now() {
-            depth -= 1;
-            tree.depth -= 1;
-            if score.abs() == i32::MAX {
+        if score.abs() >= 30000
+            || (node_stop.is_some() && node_stop.unwrap() <= tree.leaf_size)
+            || (time_stop.is_some() && time_stop.unwrap() <= Instant::now())
+            || (depth_stop.is_some() && depth_stop.unwrap() <= depth)
+            || shared_flags.lock().unwrap().should_stop
+        {
+            if score.abs() == i32::MAX || moves.len() == 0 {
                 score = prev_score;
                 moves = prev_moves.clone();
-                println!("Debug: Reverting to previous depth!");
             }
             break;
         } else {
             prev_score = score;
             prev_moves = moves.clone();
-        }
 
-        if score.abs() >= 30000
-            || (node_stop.is_some() && node_stop.unwrap() <= tree.leaf_size)
-            || (depth_stop.is_some() && depth_stop.unwrap() <= depth)
-            || shared_flags.lock().unwrap().should_stop
-        {
-            break;
-        } else if start_time.elapsed().as_millis() > 0 {
-            println!(
-                "info depth {} nodes {} nps {} score {} currmove {}",
-                depth,
-                tree.leaf_size,
-                ((tree.leaf_size as f64 / nps_start.elapsed().as_nanos() as f64) * 1000000000.0)
-                    as u32,
-                score,
-                moves[0].move_to_coords()
-            );
+            // uci reccomendation is to only show info after 1000 ms but I like seeing work
+            if start_time.elapsed().as_millis() > 0 {
+                println!(
+                    "info depth {} nodes {} nps {} score {} currmove {}",
+                    depth,
+                    tree.leaf_size,
+                    ((tree.leaf_size as f64 / nps_start.elapsed().as_nanos() as f64) * 1000000000.0)
+                        as u32,
+                    score,
+                    moves[0].move_to_coords()
+                );
+            }
         }
     }
 
@@ -1628,7 +1625,7 @@ fn minimax(
         match shared_flags.lock().unwrap().eval_map[depth - 1].get(&position.gen_hash()) {
             Some(hashed) => {
                 // zobrist cache hit
-                tree.nodes[node_depth][node_index].score = hashed.0;
+                tree.nodes[node_depth][node_index].score = Some(hashed.0);
                 return hashed.clone();
             }
             None => {}
@@ -1644,7 +1641,7 @@ fn minimax(
         } else {
             i32::MAX
         };
-        tree.nodes[node_depth][node_index].score = eval;
+        tree.nodes[node_depth][node_index].score = Some(eval);
         return (
             eval,
             vec![tree.nodes[node_depth][node_index].halfmove.clone()],
@@ -1656,7 +1653,7 @@ fn minimax(
     }
 
     let mut eval_exists = false;
-    let mut to_search: Vec<(usize, i32)> = Vec::new();
+    let mut to_search: Vec<(usize, Option<i32>)> = Vec::new();
     if tree.nodes[node_depth][node_index].children.is_some() {
         let children = tree.nodes[node_depth][node_index].children.unwrap().clone();
         for i in children.0..children.1 + 1 {
@@ -1664,7 +1661,7 @@ fn minimax(
                 || position.board[tree.nodes[node_depth + 1][i].halfmove.to as usize] != None
             {
                 to_search.push((i, tree.nodes[node_depth + 1][i].score));
-                if tree.nodes[node_depth + 1][i].score != 0 {
+                if tree.nodes[node_depth + 1][i].score != None {
                     eval_exists = true
                 }
             }
@@ -1673,7 +1670,7 @@ fn minimax(
 
     if to_search.is_empty() {
         let eval = position_eval(&position, shared_flags);
-        tree.nodes[node_depth][node_index].score = eval;
+        tree.nodes[node_depth][node_index].score = Some(eval);
         return (
             eval,
             vec![tree.nodes[node_depth][node_index].halfmove.clone()],
@@ -1681,11 +1678,17 @@ fn minimax(
     }
 
     if eval_exists {
+        let (mut to_search_with_score, to_search_without_score): (Vec<_>, Vec<_>) = to_search
+            .clone()
+            .into_iter()
+            .partition(|&(_, score)| score.is_some());
         if is_maximizing {
-            to_search.sort_by(|a, b| a.1.cmp(&b.1));
+            to_search_with_score.sort_by(|a, b| b.1.cmp(&a.1));
         } else {
-            to_search.sort_by(|a, b| b.1.cmp(&a.1));
+            to_search_with_score.sort_by(|a, b| a.1.cmp(&b.1));
         }
+        let mut to_search = to_search_with_score;
+        to_search.extend(to_search_without_score);
     }
 
     let mut best_score = if is_maximizing {
@@ -1749,7 +1752,7 @@ fn minimax(
         {
             // note: won't be sorted if early return.
             // also won't store in zobrist, which is intentional, as current is not fully searched
-            tree.nodes[node_depth][node_index].score = best_score;
+            tree.nodes[node_depth][node_index].score = Some(best_score);
             return (best_score, best_path);
         }
     }
@@ -1759,7 +1762,7 @@ fn minimax(
         zobrist[depth - 1].insert(position.gen_hash(), (best_score, best_path.clone()));
     }
 
-    tree.nodes[node_depth][node_index].score = best_score;
+    tree.nodes[node_depth][node_index].score = Some(best_score);
     return (best_score, best_path);
 }
 
