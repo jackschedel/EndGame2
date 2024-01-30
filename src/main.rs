@@ -1631,6 +1631,7 @@ fn minimax(
         tree.gen_children(node_depth, node_index);
     }
 
+    let mut eval_exists = false;
     let mut to_search: Vec<(usize, i32)> = Vec::new();
     if tree.nodes[node_depth][node_index].children.is_some() {
         let children = tree.nodes[node_depth][node_index].children.unwrap().clone();
@@ -1639,6 +1640,9 @@ fn minimax(
                 || position.board[tree.nodes[node_depth + 1][i].halfmove.to as usize] != None
             {
                 to_search.push((i, tree.nodes[node_depth + 1][i].score));
+                if tree.nodes[node_depth + 1][i].score != 0 {
+                    eval_exists = true
+                }
             }
         }
     }
@@ -1652,10 +1656,12 @@ fn minimax(
         );
     }
 
-    if is_maximizing {
-        to_search.sort_by(|a, b| a.1.cmp(&b.1));
-    } else {
-        to_search.sort_by(|a, b| b.1.cmp(&a.1));
+    if eval_exists {
+        if is_maximizing {
+            to_search.sort_by(|a, b| a.1.cmp(&b.1));
+        } else {
+            to_search.sort_by(|a, b| b.1.cmp(&a.1));
+        }
     }
 
     let mut best_score = if is_maximizing {
