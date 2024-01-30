@@ -86,6 +86,7 @@ struct PositionTreeNode {
     parent: usize,
     children: Option<(usize, usize)>,
     halfmove: HalfMove,
+    score: i32,
 }
 
 impl Color {
@@ -299,6 +300,7 @@ impl PositionTree {
                     parent: index,
                     halfmove: moves[i].to_owned(),
                     children: None,
+                    score: 0,
                 };
                 self.nodes[depth + 1].push(child_node);
             }
@@ -337,6 +339,7 @@ impl PositionTreeNode {
                 is_capture: false,
             },
             children: None,
+            score: 0,
         }
     }
 
@@ -1457,7 +1460,7 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
 fn go_search(
     position: Position,
     node_stop: Option<usize>,
-    depth_stop: Option<usize>,
+    mut depth_stop: Option<usize>,
     time_stop: Option<Instant>,
     shared_flags: &Arc<Mutex<SharedFlags>>,
 ) {
@@ -1472,6 +1475,13 @@ fn go_search(
     let mut prev_moves = vec![];
 
     start_time = Instant::now();
+
+    if let Some(ref mut depth) = depth_stop {
+        if *depth <= 1 {
+            *depth += 1;
+        }
+    }
+
     loop {
         if shared_flags.lock().unwrap().eval_map.len() <= depth + 1 {
             let zobrist = &mut shared_flags.lock().unwrap().eval_map;
@@ -1572,7 +1582,7 @@ fn print_pv(moves: &Vec<HalfMove>) {
 
     print!("pv ");
 
-    for i in 0..moves.len() {
+    for i in 0..moves.len() - 1 {
         if moves[i].move_to_coords() == "a1a1" {
             break;
         }
@@ -1597,6 +1607,7 @@ fn minimax(
         match shared_flags.lock().unwrap().eval_map[depth - 1].get(&position.gen_hash()) {
             Some(hashed) => {
                 // zobrist cache hit
+                tree.nodes[node_depth][node_index].score = hashed.0;
                 return hashed.clone();
             }
             None => {}
@@ -1604,12 +1615,14 @@ fn minimax(
     }
 
     if term_time.is_some() && term_time.unwrap() < Instant::now() {
+        let eval = if is_maximizing {
+            i32::MIN + 1
+        } else {
+            i32::MAX
+        };
+        tree.nodes[node_depth][node_index].score = eval;
         return (
-            if is_maximizing {
-                i32::MIN + 1
-            } else {
-                i32::MAX
-            },
+            eval,
             vec![tree.nodes[node_depth][node_index].halfmove.clone()],
         );
     }
@@ -1618,24 +1631,31 @@ fn minimax(
         tree.gen_children(node_depth, node_index);
     }
 
-    let mut to_search = vec![];
+    let mut to_search: Vec<(usize, i32)> = Vec::new();
     if tree.nodes[node_depth][node_index].children.is_some() {
         let children = tree.nodes[node_depth][node_index].children.unwrap().clone();
         for i in children.0..children.1 + 1 {
             if depth > 0
                 || position.board[tree.nodes[node_depth + 1][i].halfmove.to as usize] != None
             {
-                to_search.push(i);
+                to_search.push((i, tree.nodes[node_depth + 1][i].score));
             }
         }
     }
 
     if to_search.is_empty() {
         let eval = position_eval(&position, shared_flags);
+        tree.nodes[node_depth][node_index].score = eval;
         return (
             eval,
             vec![tree.nodes[node_depth][node_index].halfmove.clone()],
         );
+    }
+
+    if is_maximizing {
+        to_search.sort_by(|a, b| a.1.cmp(&b.1));
+    } else {
+        to_search.sort_by(|a, b| b.1.cmp(&a.1));
     }
 
     let mut best_score = if is_maximizing {
@@ -1644,11 +1664,10 @@ fn minimax(
         i32::MAX
     };
     let mut best_path = Vec::new();
-
     for i in 0..to_search.len() {
         let mut new_pos = position.clone();
 
-        let halfmove = tree.nodes[node_depth + 1][to_search[i]].halfmove;
+        let halfmove = tree.nodes[node_depth + 1][to_search[i].0].halfmove.clone();
         execute_halfmove(&mut new_pos, halfmove);
 
         // no more computations if found mate
@@ -1662,7 +1681,7 @@ fn minimax(
             tree,
             new_pos,
             node_depth + 1,
-            to_search[i],
+            to_search[i].0,
             !is_maximizing,
             alpha,
             beta,
@@ -1675,14 +1694,14 @@ fn minimax(
             if child_score > best_score {
                 best_score = child_score;
                 child_path.insert(0, halfmove);
-                best_path = child_path;
+                best_path = child_path.clone();
             }
             alpha = alpha.max(best_score);
         } else {
             if child_score < best_score {
                 best_score = child_score;
                 child_path.insert(0, halfmove);
-                best_path = child_path;
+                best_path = child_path.clone();
             }
             beta = beta.min(best_score);
         }
@@ -1691,7 +1710,11 @@ fn minimax(
             break;
         }
 
-        if term_time.is_some() && term_time.unwrap() < Instant::now() {
+        // note: no need to early return if finished loop anyways, so check for all but last iter
+        if term_time.is_some() && term_time.unwrap() < Instant::now() && i < to_search.len() - 1 {
+            // note: won't be sorted if early return.
+            // also won't store in zobrist, which is intentional, as current is not fully searched
+            tree.nodes[node_depth][node_index].score = best_score;
             return (best_score, best_path);
         }
     }
@@ -1701,6 +1724,7 @@ fn minimax(
         zobrist[depth - 1].insert(position.gen_hash(), (best_score, best_path.clone()));
     }
 
+    tree.nodes[node_depth][node_index].score = best_score;
     return (best_score, best_path);
 }
 
