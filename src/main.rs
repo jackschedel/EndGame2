@@ -1474,6 +1474,7 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
     if shared_flags.lock().unwrap().should_quit == true {
         shared_flags.lock().unwrap().can_quit = true;
     }
+    shared_flags.lock().unwrap().should_stop = false;
 }
 
 fn go_search(
@@ -1551,6 +1552,7 @@ fn go_search(
         if score.abs() >= 30000
             || (node_stop.is_some() && node_stop.unwrap() <= leaf_size)
             || (depth_stop.is_some() && depth_stop.unwrap() <= depth)
+            || shared_flags.lock().unwrap().should_stop
         {
             break;
         } else if start_time.elapsed().as_millis() > 0 {
@@ -1633,7 +1635,9 @@ fn minimax(
         }
     }
 
-    if term_time.is_some() && term_time.unwrap() < Instant::now() {
+    if (term_time.is_some() && term_time.unwrap() < Instant::now())
+        || shared_flags.lock().unwrap().should_stop
+    {
         let eval = if is_maximizing {
             i32::MIN + 1
         } else {
@@ -1736,7 +1740,10 @@ fn minimax(
         }
 
         // note: no need to early return if finished loop anyways, so check for all but last iter
-        if term_time.is_some() && term_time.unwrap() < Instant::now() && i < to_search.len() - 1 {
+        if ((term_time.is_some() && term_time.unwrap() < Instant::now())
+            || shared_flags.lock().unwrap().should_stop)
+            && i < to_search.len() - 1
+        {
             // note: won't be sorted if early return.
             // also won't store in zobrist, which is intentional, as current is not fully searched
             tree.nodes[node_depth][node_index].score = best_score;
