@@ -653,18 +653,30 @@ fn print_handle_command(input: String, shared_flags: &Arc<Mutex<SharedFlags>>) {
 }
 
 fn handle_command(input: String, shared_flags: &Arc<Mutex<SharedFlags>>) {
-    let mut command = input.trim().split_whitespace();
-    if let Some(word) = command.next() {
-        if !shared_flags.lock().unwrap().uci_enabled {
-            if word == "uci" {
-                uci_command(shared_flags);
+    let shared_flags_clone = Arc::clone(shared_flags);
+    let input_clone = input.clone();
+
+    thread::spawn(move || {
+        let command_owned: Vec<String> = input_clone
+            .trim()
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect();
+        if let Some(word) = command_owned.get(0).map(String::as_str) {
+            if !shared_flags_clone.lock().unwrap().uci_enabled {
+                if word == "uci" {
+                    uci_command(&shared_flags_clone);
+                } else {
+                    println!("Please enable UCI mode first!")
+                }
             } else {
-                println!("Please enable UCI mode first!")
+                let command_str = command_owned[1..].join(" ");
+                let mut command = command_str.split_whitespace();
+
+                parse_command(&shared_flags_clone, &mut command, word);
             }
-        } else {
-            parse_command(shared_flags, &mut command, word);
         }
-    }
+    });
 }
 
 fn parse_command(
