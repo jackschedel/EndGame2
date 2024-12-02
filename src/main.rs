@@ -1,3 +1,6 @@
+#![allow(clippy::needless_return)]
+#![allow(clippy::too_many_arguments)]
+
 use hashbrown::{HashMap, HashSet};
 use std::io::{self, BufRead};
 use std::str::SplitWhitespace;
@@ -125,7 +128,7 @@ impl Piece {
 
 impl fmt::Debug for HalfMove {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.flag == None {
+        if self.flag.is_none() {
             return write!(f, "[{} {}]", int_to_coord(self.from), int_to_coord(self.to));
         } else {
             return write!(
@@ -141,16 +144,13 @@ impl fmt::Debug for HalfMove {
 
 impl HalfMove {
     fn move_to_coords(&self) -> String {
-        let promotion_str;
-
-        match self.flag {
-            Some(HalfmoveFlag::QueenPromotion) => promotion_str = "q",
-            Some(HalfmoveFlag::RookPromotion) => promotion_str = "r",
-            Some(HalfmoveFlag::KnightPromotion) => promotion_str = "k",
-            Some(HalfmoveFlag::BishopPromotion) => promotion_str = "b",
-
-            _ => promotion_str = "",
-        }
+        let promotion_str = match self.flag {
+            Some(HalfmoveFlag::QueenPromotion) => "q",
+            Some(HalfmoveFlag::RookPromotion) => "r",
+            Some(HalfmoveFlag::KnightPromotion) => "k",
+            Some(HalfmoveFlag::BishopPromotion) => "b",
+            _ => "",
+        };
 
         if self.flag == Some(HalfmoveFlag::Castle) {
             if self.from == 4 {
@@ -159,12 +159,10 @@ impl HalfMove {
                 } else {
                     return "e1g1".to_string();
                 }
+            } else if self.to == 56 {
+                return "e8c8".to_string();
             } else {
-                if self.to == 56 {
-                    return "e8c8".to_string();
-                } else {
-                    return "e8g8".to_string();
-                }
+                return "e8g8".to_string();
             }
         }
 
@@ -284,8 +282,8 @@ impl PositionTree {
         trace.reverse();
 
         cur_depth = 1;
-        for i in 0..trace.len() {
-            execute_halfmove(&mut position, self.nodes[cur_depth][trace[i]].halfmove);
+        for item in trace {
+            execute_halfmove(&mut position, self.nodes[cur_depth][item].halfmove);
             cur_depth += 1;
         }
 
@@ -299,10 +297,10 @@ impl PositionTree {
             }
 
             let orig_len = self.nodes[depth + 1].len();
-            for i in 0..moves.len() {
+            for halfmove in moves.iter() {
                 let child_node = PositionTreeNode {
                     parent: index,
-                    halfmove: moves[i].to_owned(),
+                    halfmove: halfmove.to_owned(),
                     children: None,
                     score: None,
                 };
@@ -315,7 +313,7 @@ impl PositionTree {
     }
 
     fn increase_depth(&mut self) -> usize {
-        if self.nodes.len() == 0 {
+        if self.nodes.is_empty() {
             return 0;
         }
 
@@ -421,7 +419,7 @@ impl Position {
             hash = hash.wrapping_add(772);
         }
 
-        if self.en_passant_target != None {
+        if self.en_passant_target.is_some() {
             hash = hash.wrapping_add(773 + (self.en_passant_target.unwrap() % 8) as u64);
         }
 
@@ -438,7 +436,7 @@ impl Position {
             index -= 8;
             blank_count = 0;
 
-            if self.board[index as usize] == None {
+            if self.board[index as usize].is_none() {
                 blank_count += 1;
             } else {
                 if blank_count != 0 {
@@ -450,7 +448,7 @@ impl Position {
 
             for _ in 0..7 {
                 index += 1;
-                if self.board[index as usize] == None {
+                if self.board[index as usize].is_none() {
                     blank_count += 1;
                 } else {
                     if blank_count != 0 {
@@ -509,10 +507,10 @@ impl Position {
 
         fen += " ";
 
-        if self.en_passant_target == None {
+        if self.en_passant_target.is_none() {
             fen += "-";
         } else {
-            fen += &format!("{}", int_to_coord(self.en_passant_target.unwrap()));
+            fen += &int_to_coord(self.en_passant_target.unwrap()).to_string();
         }
 
         fen += &format!(" {} {}", self.halfmove_clock, self.fullmove_number);
@@ -644,29 +642,24 @@ fn main() {
 }
 
 fn handle_cli_input(shared_flags: Arc<Mutex<SharedFlags>>) {
-    for line in io::stdin().lock().lines() {
-        if let Ok(input) = line {
-            handle_command(input, &shared_flags);
-        }
+    for input in io::stdin().lock().lines().map_while(Result::ok) {
+        handle_command(input, &shared_flags);
     }
 }
 
-fn print_handle_command(input: String, shared_flags: &Arc<Mutex<SharedFlags>>) {
-    println!("> {}", input);
-    handle_command(input, shared_flags);
-}
+//fn print_handle_command(input: String, shared_flags: &Arc<Mutex<SharedFlags>>) {
+//    println!("> {}", input);
+//    handle_command(input, shared_flags);
+//}
 
 fn handle_command(input: String, shared_flags: &Arc<Mutex<SharedFlags>>) {
     let shared_flags_clone = Arc::clone(shared_flags);
     let input_clone = input.clone();
 
     thread::spawn(move || {
-        let command_owned: Vec<String> = input_clone
-            .trim()
-            .split_whitespace()
-            .map(str::to_owned)
-            .collect();
-        if let Some(word) = command_owned.get(0).map(String::as_str) {
+        let command_owned: Vec<String> =
+            input_clone.split_whitespace().map(str::to_owned).collect();
+        if let Some(word) = command_owned.first().map(String::as_str) {
             if !shared_flags_clone.lock().unwrap().uci_enabled {
                 if word == "uci" {
                     uci_command(&shared_flags_clone);
@@ -685,28 +678,28 @@ fn handle_command(input: String, shared_flags: &Arc<Mutex<SharedFlags>>) {
 
 fn parse_command(
     shared_flags: &Arc<Mutex<SharedFlags>>,
-    mut command: &mut SplitWhitespace,
+    command: &mut SplitWhitespace,
     word: &str,
 ) {
     match word {
         "uci" => uci_command(shared_flags),
-        "debug" => debug_command(&mut command, shared_flags),
+        "debug" => debug_command(command, shared_flags),
         "isready" => isready_command(shared_flags),
-        "setoption" => setoption_command(&mut command, shared_flags),
-        "register" => register_command(&mut command, shared_flags),
+        "setoption" => setoption_command(command, shared_flags),
+        "register" => register_command(command, shared_flags),
         "ucinewgame" => {
             // clear zobrist
             shared_flags.lock().unwrap().eval_map = vec![HashMap::new()];
         }
-        "position" => position_command(&mut command, shared_flags),
-        "go" => go_command(&mut command, shared_flags),
+        "position" => position_command(command, shared_flags),
+        "go" => go_command(command, shared_flags),
         "stop" => stop_command(shared_flags),
         "ponderhit" => ponderhit_command(shared_flags),
         "quit" => quit_command(shared_flags),
         // todo: remove following commands, or only enable in debug mode
         "ref" => print_index_reference(),
         "print" => display_debug(shared_flags),
-        "moves" => handle_move_tokens(&mut command, shared_flags),
+        "moves" => handle_move_tokens(command, shared_flags),
         "fen" => println!("{}", shared_flags.lock().unwrap().position.to_fen()),
         _ => println!("Error - Unknown command!"),
     }
@@ -748,7 +741,7 @@ fn position_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Shar
         Some("startpos") => {
             set_board_from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR", shared_flags);
             let token2 = command.next();
-            if token2 == None {
+            if token2.is_none() {
                 return;
             } else if token2.unwrap() != "moves" {
                 println!("Error - expected moves token, got {}!", token2.unwrap());
@@ -773,10 +766,10 @@ fn position_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Shar
 fn handle_move_tokens(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlags>>) {
     let mut move_token = command.next();
 
-    while move_token != None {
+    while move_token.is_some() {
         let parsed_move = string_to_halfmove(shared_flags, move_token.unwrap());
 
-        if parsed_move == None {
+        if parsed_move.is_none() {
             println!("Error - unparsable move - {}", move_token.unwrap());
             break;
         } else {
@@ -808,30 +801,18 @@ fn execute_halfmove(position: &mut Position, to_exec: HalfMove) {
 
     position.halfmove_clock += 1;
 
-    let piece: Piece;
-
     let color = position.board[to_exec.from as usize].unwrap().get_color();
 
-    match to_exec.flag {
-        Some(HalfmoveFlag::KnightPromotion) => {
-            piece = Piece::Knight(color);
-        }
-        Some(HalfmoveFlag::BishopPromotion) => {
-            piece = Piece::Bishop(color);
-        }
-        Some(HalfmoveFlag::RookPromotion) => {
-            piece = Piece::Rook(color);
-        }
-        Some(HalfmoveFlag::QueenPromotion) => {
-            piece = Piece::Queen(color);
-        }
-        _ => {
-            piece = position.board[to_exec.from as usize].unwrap();
-        }
-    }
+    let piece = match to_exec.flag {
+        Some(HalfmoveFlag::KnightPromotion) => Piece::Knight(color),
+        Some(HalfmoveFlag::BishopPromotion) => Piece::Bishop(color),
+        Some(HalfmoveFlag::RookPromotion) => Piece::Rook(color),
+        Some(HalfmoveFlag::QueenPromotion) => Piece::Queen(color),
+        _ => position.board[to_exec.from as usize].unwrap(),
+    };
 
     if to_exec.flag != Some(HalfmoveFlag::Castle) {
-        if position.board[to_exec.to as usize] != None
+        if position.board[to_exec.to as usize].is_some()
             || position.board[to_exec.from as usize] == Some(Piece::Pawn(position.move_next))
         {
             position.halfmove_clock = 0;
@@ -926,13 +907,11 @@ fn execute_halfmove(position: &mut Position, to_exec: HalfMove) {
     }
 
     if to_exec.flag == Some(HalfmoveFlag::DoublePawnMove) {
-        let middle_space: u8;
-
-        if to_exec.from > to_exec.to {
-            middle_space = to_exec.from - 8;
+        let middle_space: u8 = if to_exec.from > to_exec.to {
+            to_exec.from - 8
         } else {
-            middle_space = to_exec.from + 8;
-        }
+            to_exec.from + 8
+        };
 
         position.en_passant_target = Some(middle_space);
     } else {
@@ -1002,16 +981,13 @@ fn string_to_halfmove(
                     flag = Some(HalfmoveFlag::Castle);
                 }
             }
-        } else {
-            if coord1 == 60 {
-                if (coord2 == 63 || coord2 == 62) && position.castling_rights.black.kingside {
-                    coord2 = 63;
-                    flag = Some(HalfmoveFlag::Castle);
-                }
-                if (coord2 == 56 || coord2 == 58) && position.castling_rights.black.queenside {
-                    coord2 = 56;
-                    flag = Some(HalfmoveFlag::Castle);
-                }
+        } else if coord1 == 60 {
+            if (coord2 == 63 || coord2 == 62) && position.castling_rights.black.kingside {
+                coord2 = 63;
+                flag = Some(HalfmoveFlag::Castle);
+            } else if (coord2 == 56 || coord2 == 58) && position.castling_rights.black.queenside {
+                coord2 = 56;
+                flag = Some(HalfmoveFlag::Castle);
             }
         }
     }
@@ -1065,9 +1041,7 @@ fn set_flags_from_fen(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Sh
     }
     let next_token = command.next();
 
-    if next_token == None {
-        return;
-    } else if next_token.unwrap() == "moves" {
+    if next_token.is_none() || next_token.unwrap() == "moves" {
         return;
     } else {
         let halfmove_clock_token = next_token.unwrap();
@@ -1098,9 +1072,7 @@ fn set_flags_from_fen(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Sh
 
     let next_token = command.next();
 
-    if next_token == None {
-        return;
-    } else if next_token.unwrap() == "moves" {
+    if next_token.is_none() || next_token.unwrap() == "moves" {
         return;
     }
 
@@ -1108,7 +1080,7 @@ fn set_flags_from_fen(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Sh
 }
 
 fn coord_to_int(coord: &str) -> u8 {
-    let file = coord.chars().nth(0).unwrap() as u8 - 'a' as u8;
+    let file = coord.chars().next().unwrap() as u8 - b'a';
 
     let rank = coord.chars().nth(1).unwrap().to_digit(10).unwrap() as u8 - 1;
 
@@ -1116,7 +1088,7 @@ fn coord_to_int(coord: &str) -> u8 {
 }
 
 fn int_to_coord(num: u8) -> String {
-    let file = (num % 8) as u8 + 'a' as u8;
+    let file = (num % 8) + b'a';
 
     let rank = (num / 8 + 1).to_string();
 
@@ -1232,7 +1204,7 @@ fn display_debug(shared_flags: &Arc<Mutex<SharedFlags>>) {
     }
 }
 
-fn handle_fen_char(shared_flags: &Arc<Mutex<SharedFlags>>, mut index: &mut usize, char: char) {
+fn handle_fen_char(shared_flags: &Arc<Mutex<SharedFlags>>, index: &mut usize, char: char) {
     match char {
         'P' => {
             shared_flags.lock().unwrap().position.board[*index] = Some(Piece::Pawn(Color::White))
@@ -1272,7 +1244,7 @@ fn handle_fen_char(shared_flags: &Arc<Mutex<SharedFlags>>, mut index: &mut usize
             shared_flags.lock().unwrap().position.board[*index] = Some(Piece::King(Color::Black));
             shared_flags.lock().unwrap().position.piece_set.black_king = *index as u8;
         }
-        _ => handle_fen_digit(&mut index, char),
+        _ => handle_fen_digit(index, char),
     }
 
     match char {
@@ -1401,12 +1373,10 @@ fn print_board_with_indexes(shared_flags: &Arc<Mutex<SharedFlags>>) {
 
             if piece_char == '-' || piece_char == '⚊' {
                 print!("  {}   ", piece_char);
+            } else if index < 10 {
+                print!("0{}-{}  ", index, piece_char);
             } else {
-                if index < 10 {
-                    print!("0{}-{}  ", index, piece_char);
-                } else {
-                    print!("{}-{}  ", index, piece_char);
-                }
+                print!("{}-{}  ", index, piece_char);
             }
 
             index += 1;
@@ -1475,7 +1445,7 @@ fn go_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<SharedFlag
         _ => println!("Go command improperly formatted!"),
     }
 
-    if shared_flags.lock().unwrap().should_quit == true {
+    if shared_flags.lock().unwrap().should_quit {
         shared_flags.lock().unwrap().can_quit = true;
     }
     shared_flags.lock().unwrap().should_stop = false;
@@ -1492,12 +1462,11 @@ fn go_search(
     let mut moves;
     let mut score;
     let mut depth = 0;
-    let start_time;
     let mut nps_start;
     let mut prev_score = 0;
     let mut prev_moves = vec![];
 
-    start_time = Instant::now();
+    let start_time = Instant::now();
 
     if let Some(ref mut depth) = depth_stop {
         if *depth <= 1 {
@@ -1539,7 +1508,7 @@ fn go_search(
             || (depth_stop.is_some() && depth_stop.unwrap() <= depth)
             || shared_flags.lock().unwrap().should_stop
         {
-            if score.abs() == i32::MAX || moves.len() == 0 {
+            if score.abs() == i32::MAX || moves.is_empty() {
                 score = prev_score;
                 moves = prev_moves.clone();
             }
@@ -1592,18 +1561,18 @@ fn go_search(
     }
 }
 
-fn print_pv(moves: &Vec<HalfMove>) {
+fn print_pv(moves: &[HalfMove]) {
     if moves[0].move_to_coords() == "a1a1" || moves.is_empty() {
         return;
     }
 
     print!("pv ");
 
-    for i in 0..moves.len() - 1 {
-        if moves[i].move_to_coords() == "a1a1" {
+    for halfmove in moves {
+        if halfmove.move_to_coords() == "a1a1" {
             break;
         }
-        print!("{} ", moves[i].move_to_coords());
+        print!("{} ", halfmove.move_to_coords());
     }
     println!();
 }
@@ -1622,13 +1591,12 @@ fn minimax(
     term_nodes: Option<usize>,
 ) -> (i32, Vec<HalfMove>) {
     if depth > 0 {
-        match shared_flags.lock().unwrap().eval_map[depth - 1].get(&position.gen_hash()) {
-            Some(hashed) => {
-                // zobrist cache hit
-                tree.nodes[node_depth][node_index].score = Some(hashed.0);
-                return hashed.clone();
-            }
-            None => {}
+        if let Some(hashed) =
+            shared_flags.lock().unwrap().eval_map[depth - 1].get(&position.gen_hash())
+        {
+            // zobrist cache hit
+            tree.nodes[node_depth][node_index].score = Some(hashed.0);
+            return hashed.clone();
         }
     }
 
@@ -1642,10 +1610,7 @@ fn minimax(
             i32::MAX
         };
         tree.nodes[node_depth][node_index].score = Some(eval);
-        return (
-            eval,
-            vec![tree.nodes[node_depth][node_index].halfmove.clone()],
-        );
+        return (eval, vec![tree.nodes[node_depth][node_index].halfmove]);
     }
 
     if tree.nodes[node_depth][node_index].children.is_none() {
@@ -1655,13 +1620,13 @@ fn minimax(
     let mut eval_exists = false;
     let mut to_search: Vec<(usize, Option<i32>)> = Vec::new();
     if tree.nodes[node_depth][node_index].children.is_some() {
-        let children = tree.nodes[node_depth][node_index].children.unwrap().clone();
+        let children = tree.nodes[node_depth][node_index].children.unwrap();
         for i in children.0..children.1 + 1 {
             if depth > 0
-                || position.board[tree.nodes[node_depth + 1][i].halfmove.to as usize] != None
+                || position.board[tree.nodes[node_depth + 1][i].halfmove.to as usize].is_some()
             {
                 to_search.push((i, tree.nodes[node_depth + 1][i].score));
-                if tree.nodes[node_depth + 1][i].score != None {
+                if tree.nodes[node_depth + 1][i].score.is_some() {
                     eval_exists = true
                 }
             }
@@ -1671,10 +1636,7 @@ fn minimax(
     if to_search.is_empty() {
         let eval = position_eval(&position, shared_flags);
         tree.nodes[node_depth][node_index].score = Some(eval);
-        return (
-            eval,
-            vec![tree.nodes[node_depth][node_index].halfmove.clone()],
-        );
+        return (eval, vec![tree.nodes[node_depth][node_index].halfmove]);
     }
 
     if eval_exists {
@@ -1700,7 +1662,7 @@ fn minimax(
     for i in 0..to_search.len() {
         let mut new_pos = position.clone();
 
-        let halfmove = tree.nodes[node_depth + 1][to_search[i].0].halfmove.clone();
+        let halfmove = tree.nodes[node_depth + 1][to_search[i].0].halfmove;
         execute_halfmove(&mut new_pos, halfmove);
 
         // no more computations if found mate
@@ -1876,9 +1838,7 @@ fn perft_command(position: Position, depth: u8, shared_flags: &Arc<Mutex<SharedF
 }
 
 fn gen_possible(position: &mut Position) -> Vec<HalfMove> {
-    let moves: Vec<HalfMove>;
-
-    moves = gen_pseudolegal_moves(position);
+    let moves = gen_pseudolegal_moves(position);
 
     return moves;
 }
@@ -2066,97 +2026,97 @@ fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool
     // up 2
     if (index / 8) <= 5 {
         // right 1
-        if (index % 8) <= 6 {
-            if position.board[(index as i8 + 17) as usize] == Some(Piece::Knight(opp_color)) {
-                return true;
-            }
+        if (index % 8) <= 6
+            && position.board[(index as i8 + 17) as usize] == Some(Piece::Knight(opp_color))
+        {
+            return true;
         }
 
         // left 1
-        if (index % 8) >= 1 {
-            if position.board[(index as i8 + 15) as usize] == Some(Piece::Knight(opp_color)) {
-                return true;
-            }
+        if (index % 8) >= 1
+            && position.board[(index as i8 + 15) as usize] == Some(Piece::Knight(opp_color))
+        {
+            return true;
         }
     }
 
     // right 2
     if (index % 8) <= 5 {
         // up 1
-        if (index / 8) <= 6 {
-            if position.board[(index as i8 + 10) as usize] == Some(Piece::Knight(opp_color)) {
-                return true;
-            }
+        if (index / 8) <= 6
+            && position.board[(index as i8 + 10) as usize] == Some(Piece::Knight(opp_color))
+        {
+            return true;
         }
 
         // down 1
-        if (index / 8) >= 1 {
-            if position.board[(index as i8 - 6) as usize] == Some(Piece::Knight(opp_color)) {
-                return true;
-            }
+        if (index / 8) >= 1
+            && position.board[(index as i8 - 6) as usize] == Some(Piece::Knight(opp_color))
+        {
+            return true;
         }
     }
 
     // down 2
     if (index / 8) >= 2 {
         // right 1
-        if (index % 8) <= 6 {
-            if position.board[(index as i8 - 15) as usize] == Some(Piece::Knight(opp_color)) {
-                return true;
-            }
+        if (index % 8) <= 6
+            && position.board[(index as i8 - 15) as usize] == Some(Piece::Knight(opp_color))
+        {
+            return true;
         }
 
         // left 1
-        if (index % 8) >= 1 {
-            if position.board[(index as i8 - 17) as usize] == Some(Piece::Knight(opp_color)) {
-                return true;
-            }
+        if (index % 8) >= 1
+            && position.board[(index as i8 - 17) as usize] == Some(Piece::Knight(opp_color))
+        {
+            return true;
         }
     }
 
     // left 2
     if (index % 8) >= 2 {
         // up 1
-        if (index / 8) <= 6 {
-            if position.board[(index as i8 + 6) as usize] == Some(Piece::Knight(opp_color)) {
-                return true;
-            }
+        if (index / 8) <= 6
+            && position.board[(index as i8 + 6) as usize] == Some(Piece::Knight(opp_color))
+        {
+            return true;
         }
 
         // down 1
-        if (index / 8) >= 1 {
-            if position.board[(index as i8 - 10) as usize] == Some(Piece::Knight(opp_color)) {
-                return true;
-            }
+        if (index / 8) >= 1
+            && position.board[(index as i8 - 10) as usize] == Some(Piece::Knight(opp_color))
+        {
+            return true;
         }
     }
 
     // pawn checks (not counting en-passant)
     if opp_color == Color::White && index > 7 {
-        if index % 8 > 0 {
-            if position.board[(index as i8 - 9) as usize] == Some(Piece::Pawn(opp_color)) {
-                return true;
-            }
+        if index % 8 > 0
+            && position.board[(index as i8 - 9) as usize] == Some(Piece::Pawn(opp_color))
+        {
+            return true;
         }
 
-        if index % 8 < 7 {
-            if position.board[(index as i8 - 7) as usize] == Some(Piece::Pawn(opp_color)) {
-                return true;
-            }
+        if index % 8 < 7
+            && position.board[(index as i8 - 7) as usize] == Some(Piece::Pawn(opp_color))
+        {
+            return true;
         }
     }
 
     if opp_color == Color::Black && index < 56 {
-        if index % 8 > 0 {
-            if position.board[(index as i8 + 7) as usize] == Some(Piece::Pawn(opp_color)) {
-                return true;
-            }
+        if index % 8 > 0
+            && position.board[(index as i8 + 7) as usize] == Some(Piece::Pawn(opp_color))
+        {
+            return true;
         }
 
-        if index % 8 < 7 {
-            if position.board[(index as i8 + 9) as usize] == Some(Piece::Pawn(opp_color)) {
-                return true;
-            }
+        if index % 8 < 7
+            && position.board[(index as i8 + 9) as usize] == Some(Piece::Pawn(opp_color))
+        {
+            return true;
         }
     }
 
@@ -2168,13 +2128,11 @@ fn is_piece_attacked(index: u8, piece_color: Color, position: &Position) -> bool
 fn gen_pseudolegal_moves(position: &Position) -> Vec<HalfMove> {
     let color = position.move_next;
 
-    let piece_set: HashSet<u8>;
-
-    if color == Color::Black {
-        piece_set = position.piece_set.black.clone();
+    let piece_set: HashSet<u8> = if color == Color::Black {
+        position.piece_set.black.clone()
     } else {
-        piece_set = position.piece_set.white.clone();
-    }
+        position.piece_set.white.clone()
+    };
 
     let mut moves: Vec<HalfMove> = Vec::new();
 
@@ -2193,74 +2151,70 @@ fn gen_pseudolegal_moves(position: &Position) -> Vec<HalfMove> {
     }
 
     if color == Color::Black {
-        if position.castling_rights.black.kingside {
-            if position.board[63] == Some(Piece::Rook(Color::Black))
-                && position.board[62] == None
-                && position.board[61] == None
-                && position.board[60] == Some(Piece::King(Color::Black))
-                && !is_piece_attacked(61, Color::Black, position)
-                && !is_piece_attacked(62, Color::Black, position)
-            {
-                moves.push(HalfMove {
-                    from: 60,
-                    to: 63,
-                    flag: Some(HalfmoveFlag::Castle),
-                    is_capture: false,
-                });
-            }
+        if position.castling_rights.black.kingside
+            && position.board[63] == Some(Piece::Rook(Color::Black))
+            && position.board[62].is_none()
+            && position.board[61].is_none()
+            && position.board[60] == Some(Piece::King(Color::Black))
+            && !is_piece_attacked(61, Color::Black, position)
+            && !is_piece_attacked(62, Color::Black, position)
+        {
+            moves.push(HalfMove {
+                from: 60,
+                to: 63,
+                flag: Some(HalfmoveFlag::Castle),
+                is_capture: false,
+            });
         }
 
-        if position.castling_rights.black.queenside {
-            if position.board[56] == Some(Piece::Rook(Color::Black))
-                && position.board[57] == None
-                && position.board[58] == None
-                && position.board[59] == None
-                && position.board[60] == Some(Piece::King(Color::Black))
-                && !is_piece_attacked(59, Color::Black, position)
-                && !is_piece_attacked(58, Color::Black, position)
-            {
-                moves.push(HalfMove {
-                    from: 60,
-                    to: 56,
-                    flag: Some(HalfmoveFlag::Castle),
-                    is_capture: false,
-                });
-            }
+        if position.castling_rights.black.queenside
+            && position.board[56] == Some(Piece::Rook(Color::Black))
+            && position.board[57].is_none()
+            && position.board[58].is_none()
+            && position.board[59].is_none()
+            && position.board[60] == Some(Piece::King(Color::Black))
+            && !is_piece_attacked(59, Color::Black, position)
+            && !is_piece_attacked(58, Color::Black, position)
+        {
+            moves.push(HalfMove {
+                from: 60,
+                to: 56,
+                flag: Some(HalfmoveFlag::Castle),
+                is_capture: false,
+            });
         }
     } else {
-        if position.castling_rights.white.queenside {
-            if position.board[0] == Some(Piece::Rook(Color::White))
-                && position.board[1] == None
-                && position.board[2] == None
-                && position.board[3] == None
-                && position.board[4] == Some(Piece::King(Color::White))
-                && !is_piece_attacked(3, Color::White, position)
-                && !is_piece_attacked(2, Color::White, position)
-            {
-                moves.push(HalfMove {
-                    from: 4,
-                    to: 0,
-                    flag: Some(HalfmoveFlag::Castle),
-                    is_capture: false,
-                });
-            }
+        if position.castling_rights.white.queenside
+            && position.board[0] == Some(Piece::Rook(Color::White))
+            && position.board[1].is_none()
+            && position.board[2].is_none()
+            && position.board[3].is_none()
+            && position.board[4] == Some(Piece::King(Color::White))
+            && !is_piece_attacked(3, Color::White, position)
+            && !is_piece_attacked(2, Color::White, position)
+        {
+            moves.push(HalfMove {
+                from: 4,
+                to: 0,
+                flag: Some(HalfmoveFlag::Castle),
+                is_capture: false,
+            });
         }
 
-        if position.castling_rights.white.kingside {
-            if position.board[7] == Some(Piece::Rook(Color::White))
-                && position.board[6] == None
-                && position.board[5] == None
-                && position.board[4] == Some(Piece::King(Color::White))
-                && !is_piece_attacked(5, Color::White, position)
-                && !is_piece_attacked(6, Color::White, position)
-            {
-                moves.push(HalfMove {
-                    from: 4,
-                    to: 7,
-                    flag: Some(HalfmoveFlag::Castle),
-                    is_capture: false,
-                });
-            }
+        if position.castling_rights.white.kingside
+            && position.board[7] == Some(Piece::Rook(Color::White))
+            && position.board[6].is_none()
+            && position.board[5].is_none()
+            && position.board[4] == Some(Piece::King(Color::White))
+            && !is_piece_attacked(5, Color::White, position)
+            && !is_piece_attacked(6, Color::White, position)
+        {
+            moves.push(HalfMove {
+                from: 4,
+                to: 7,
+                flag: Some(HalfmoveFlag::Castle),
+                is_capture: false,
+            });
         }
     }
 
@@ -2295,11 +2249,11 @@ fn gen_piece_pseudolegal_moves(piece_index: u8, position: &Position) -> Vec<Half
         None => panic!("Error, index contained in piece_set has no piece on board!"),
     }
 
-    for i in 0..moves.len() {
-        if position.board[moves[i].to as usize] == None
-            && moves[i].flag != Some(HalfmoveFlag::EnPassant)
+    for halfmove in moves.iter_mut() {
+        if position.board[halfmove.to as usize].is_none()
+            && halfmove.flag != Some(HalfmoveFlag::EnPassant)
         {
-            moves[i].is_capture = true;
+            halfmove.is_capture = true;
         }
     }
 
@@ -2602,7 +2556,7 @@ fn gen_white_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
     let color = piece.get_color();
 
     // straight move
-    if board[(index + 8) as usize] == None {
+    if board[(index + 8) as usize].is_none() {
         // nothing in the way
         if (index / 8) != 6 {
             moves.push(HalfMove {
@@ -2611,7 +2565,7 @@ fn gen_white_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
                 flag: None,
                 is_capture: false,
             });
-            if (index / 8 == 1) && board[(index + 16) as usize] == None {
+            if (index / 8 == 1) && board[(index + 16) as usize].is_none() {
                 moves.push(HalfMove {
                     from: index,
                     to: (index + 16),
@@ -2649,12 +2603,8 @@ fn gen_white_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
     }
 
     // captures
-    let should_promote: bool;
-    if (index / 8) == 6 {
-        should_promote = true;
-    } else {
-        should_promote = false;
-    }
+    let should_promote = (index / 8) == 6;
+
     if (index % 8) != 0 {
         // left capture
         if let Some(target) = board[(index + 7) as usize] {
@@ -2767,7 +2717,7 @@ fn gen_black_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
     let color = piece.get_color();
 
     // straight move
-    if board[(index - 8) as usize] == None {
+    if board[(index - 8) as usize].is_none() {
         // nothing in the way
         if (index / 8) != 1 {
             moves.push(HalfMove {
@@ -2776,7 +2726,7 @@ fn gen_black_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
                 flag: None,
                 is_capture: false,
             });
-            if (index / 8 == 6) && board[(index - 16) as usize] == None {
+            if (index / 8 == 6) && board[(index - 16) as usize].is_none() {
                 moves.push(HalfMove {
                     from: index,
                     to: (index - 16),
@@ -2814,12 +2764,8 @@ fn gen_black_pawn_moves(index: u8, position: &Position) -> Vec<HalfMove> {
     }
 
     // captures (left/right orientation with white as bottom)
-    let should_promote: bool;
-    if (index / 8) == 1 {
-        should_promote = true;
-    } else {
-        should_promote = false;
-    }
+    let should_promote = (index / 8) == 1;
+
     if (index % 8) != 0 {
         // left capture
         if let Some(target) = board[(index - 9) as usize] {
@@ -2975,7 +2921,7 @@ fn setoption_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Sha
 
     let mut option = command.next();
 
-    while option != None {
+    while option.is_some() {
         match option {
             Some("MultiPV") => {
                 if command.next() != Some("value") {
@@ -2984,7 +2930,7 @@ fn setoption_command(command: &mut SplitWhitespace, shared_flags: &Arc<Mutex<Sha
                 }
 
                 shared_flags.lock().unwrap().options.multi_pv =
-                    command.next().unwrap().chars().nth(0).unwrap() as u8;
+                    command.next().unwrap().chars().next().unwrap() as u8;
             }
             Some("DebugIndexes") => {
                 if command.next() != Some("value") {
